@@ -1,7 +1,13 @@
 import React from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Briefcase, Building, MapPin } from 'lucide-react';
 import { Employment, StepProps } from '../types';
@@ -14,7 +20,7 @@ interface EmploymentStepProps extends StepProps {
 
 export const EmploymentStep: React.FC<EmploymentStepProps> = ({
   data,
-  onChange
+  onChange,
 }) => {
   const handleInputChange = (field: keyof Employment, value: string) => {
     onChange({ [field]: value });
@@ -27,7 +33,6 @@ export const EmploymentStep: React.FC<EmploymentStepProps> = ({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Briefcase className="h-5 w-5 text-family-primary" />
             Employment Information
           </CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -39,13 +44,13 @@ export const EmploymentStep: React.FC<EmploymentStepProps> = ({
             <Label>Job Status</Label>
             <Select
               value={data.jobStatus}
-              onValueChange={(value) => handleInputChange('jobStatus', value)}
+              onValueChange={value => handleInputChange('jobStatus', value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select job status" />
               </SelectTrigger>
               <SelectContent>
-                {JOB_STATUS_OPTIONS.map((status) => (
+                {JOB_STATUS_OPTIONS.map(status => (
                   <SelectItem key={status} value={status}>
                     {status}
                   </SelectItem>
@@ -58,38 +63,48 @@ export const EmploymentStep: React.FC<EmploymentStepProps> = ({
             <div className="space-y-4 pt-4 border-t">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="companyName" className="flex items-center gap-2">
-                    <Building className="h-4 w-4" />
+                  <Label
+                    htmlFor="companyName"
+                    className="flex items-center gap-2"
+                  >
                     Company Name
                   </Label>
                   <Input
                     id="companyName"
                     value={data.companyName}
-                    onChange={(e) => handleInputChange('companyName', e.target.value)}
+                    onChange={e =>
+                      handleInputChange('companyName', e.target.value)
+                    }
                     placeholder="Company or organization name"
                   />
                 </div>
 
-                <div className="space-y-2">
+                <div>
                   <Label htmlFor="designation">Designation</Label>
                   <Input
                     id="designation"
                     value={data.designation}
-                    onChange={(e) => handleInputChange('designation', e.target.value)}
+                    onChange={e =>
+                      handleInputChange('designation', e.target.value)
+                    }
                     placeholder="Job title or position"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="workLocation" className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
+                <Label
+                  htmlFor="workLocation"
+                  className="flex items-center gap-2"
+                >
                   Work Location
                 </Label>
                 <Input
                   id="workLocation"
                   value={data.workLocation}
-                  onChange={(e) => handleInputChange('workLocation', e.target.value)}
+                  onChange={e =>
+                    handleInputChange('workLocation', e.target.value)
+                  }
                   placeholder="Office location or remote"
                 />
               </div>

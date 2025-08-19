@@ -1,7 +1,13 @@
 import React from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -10,20 +16,10 @@ import { PersonalDetails, StepProps } from '../types';
 import { EnhancedDatePicker } from '@/components/ui/date-picker-enhanced';
 import { cn } from '@/lib/utils';
 
-const BRANCHES = [
-  'Mattackal',
-  'Mattackal Puthukeril',
-  'Mattackal Pallivathukkal',
-  'Mattackal Karikkotta',
-  'Mattackal Venparampil',
-  'Mattackal Valaparambil',
-  'Mattackal Kizhakkepurathu',
-  'Mattackal Thoppil',
-  'Mattackal Nidhirickal Kaithamattom'
-];
+
 
 const MARITAL_STATUS = ['Single', 'Married'];
-const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
+const GENDER_OPTIONS = ['Male', 'Female'];
 
 interface PersonalDetailsStepProps extends StepProps {
   data: PersonalDetails;
@@ -31,35 +27,43 @@ interface PersonalDetailsStepProps extends StepProps {
 
 export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
   data,
-  onChange
+  onChange,
 }) => {
   const handleInputChange = (field: keyof PersonalDetails, value: any) => {
     onChange({ [field]: value });
   };
 
   const handleChildrenCountChange = (count: number) => {
-    const children = Array.from({ length: count }, (_, i) => 
-      data.children[i] || { name: '', gender: '' }
+    const children = Array.from(
+      { length: count },
+      (_, i) => data.children[i] || { name: '', gender: '' }
     );
     onChange({ numberOfChildren: count, children });
   };
 
-  const handleChildChange = (index: number, field: keyof typeof data.children[0], value: string) => {
+  const handleChildChange = (
+    index: number,
+    field: keyof (typeof data.children)[0],
+    value: string
+  ) => {
     const updatedChildren = [...data.children];
     updatedChildren[index] = { ...updatedChildren[index], [field]: value };
     onChange({ children: updatedChildren });
   };
 
-  const handleFileUpload = (field: 'familyPhoto' | 'personalPhoto', file: File | null) => {
+  const handleFileUpload = (
+    field: 'familyPhoto' | 'personalPhoto',
+    file: File | null
+  ) => {
     onChange({ [field]: file });
   };
 
-  const PhotoUploadCard = ({ 
-    file, 
-    onUpload, 
-    onRemove, 
+  const PhotoUploadCard = ({
+    file,
+    onUpload,
+    onRemove,
     label,
-    description
+    description,
   }: {
     file: File | null;
     onUpload: (file: File) => void;
@@ -90,7 +94,13 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => document.getElementById(`upload-${label.replace(/\s+/g, '-').toLowerCase()}`)?.click()}
+                onClick={() =>
+                  document
+                    .getElementById(
+                      `upload-${label.replace(/\s+/g, '-').toLowerCase()}`
+                    )
+                    ?.click()
+                }
               >
                 Change Photo
               </Button>
@@ -107,7 +117,13 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => document.getElementById(`upload-${label.replace(/\s+/g, '-').toLowerCase()}`)?.click()}
+              onClick={() =>
+                document
+                  .getElementById(
+                    `upload-${label.replace(/\s+/g, '-').toLowerCase()}`
+                  )
+                  ?.click()
+              }
             >
               <Upload className="h-4 w-4 mr-2" />
               Upload Photo
@@ -117,7 +133,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
         <Input
           type="file"
           accept="image/*"
-          onChange={(e) => {
+          onChange={e => {
             const file = e.target.files?.[0];
             if (file) onUpload(file);
           }}
@@ -127,7 +143,6 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
       </div>
     </div>
   );
-
 
   return (
     <div className="space-y-4">
@@ -143,8 +158,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Label htmlFor="memberName">Member Name *</Label>
             <Input
               id="memberName"
+              placeholder="Enter your name"
               value={data.memberName}
-              onChange={(e) => handleInputChange('memberName', e.target.value)}
+              onChange={e => handleInputChange('memberName', e.target.value)}
             />
           </div>
 
@@ -152,7 +168,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Label>Is this member deceased?</Label>
             <Select
               value={data.isDeceased}
-              onValueChange={(value) => handleInputChange('isDeceased', value)}
+              onValueChange={value => handleInputChange('isDeceased', value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Please select" />
@@ -168,13 +184,13 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Label>Gender *</Label>
             <Select
               value={data.gender}
-              onValueChange={(value) => handleInputChange('gender', value)}
+              onValueChange={value => handleInputChange('gender', value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select gender" />
               </SelectTrigger>
               <SelectContent>
-                {GENDER_OPTIONS.map((gender) => (
+                {GENDER_OPTIONS.map(gender => (
                   <SelectItem key={gender} value={gender}>
                     {gender}
                   </SelectItem>
@@ -187,7 +203,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Label>Date of Birth *</Label>
             <EnhancedDatePicker
               value={data.dateOfBirth}
-              onChange={(date) => handleInputChange('dateOfBirth', date)}
+              onChange={date => handleInputChange('dateOfBirth', date)}
               placeholder="Select date of birth"
             />
           </div>
@@ -197,12 +213,11 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
               <Label>Date of Death</Label>
               <EnhancedDatePicker
                 value={data.dateOfDeath}
-                onChange={(date) => handleInputChange('dateOfDeath', date)}
+                onChange={date => handleInputChange('dateOfDeath', date)}
                 placeholder="Select date of death"
               />
             </div>
           )}
-
         </CardContent>
       </Card>
 
@@ -218,13 +233,13 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Label>Marital Status</Label>
             <Select
               value={data.maritalStatus}
-              onValueChange={(value) => handleInputChange('maritalStatus', value)}
+              onValueChange={value => handleInputChange('maritalStatus', value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
               <SelectContent>
-                {MARITAL_STATUS.map((status) => (
+                {MARITAL_STATUS.map(status => (
                   <SelectItem key={status} value={status}>
                     {status}
                   </SelectItem>
@@ -240,7 +255,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 <Input
                   id="spouseName"
                   value={data.spouseName}
-                  onChange={(e) => handleInputChange('spouseName', e.target.value)}
+                  onChange={e =>
+                    handleInputChange('spouseName', e.target.value)
+                  }
                 />
               </div>
 
@@ -248,7 +265,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 <Label>Wedding Anniversary</Label>
                 <EnhancedDatePicker
                   value={data.weddingAnniversary}
-                  onChange={(date) => handleInputChange('weddingAnniversary', date)}
+                  onChange={date =>
+                    handleInputChange('weddingAnniversary', date)
+                  }
                   placeholder="Select anniversary date"
                 />
               </div>
@@ -259,8 +278,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Label htmlFor="fatherName">Father Name</Label>
             <Input
               id="fatherName"
+              placeholder="Enter your father's name"
               value={data.fatherName}
-              onChange={(e) => handleInputChange('fatherName', e.target.value)}
+              onChange={e => handleInputChange('fatherName', e.target.value)}
             />
           </div>
 
@@ -268,8 +288,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Label htmlFor="motherName">Mother Name</Label>
             <Input
               id="motherName"
+              placeholder="Enter your mother's name"
               value={data.motherName}
-              onChange={(e) => handleInputChange('motherName', e.target.value)}
+              onChange={e => handleInputChange('motherName', e.target.value)}
             />
           </div>
         </CardContent>
@@ -285,7 +306,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
               <Label>Number of Children</Label>
               <Select
                 value={data.numberOfChildren.toString()}
-                onValueChange={(value) => handleChildrenCountChange(parseInt(value))}
+                onValueChange={value =>
+                  handleChildrenCountChange(parseInt(value))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="How many children?" />
@@ -304,12 +327,17 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
               <div className="space-y-3">
                 <Label>Children Details</Label>
                 {data.children.map((child, index) => (
-                  <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border rounded-lg">
+                  <div
+                    key={index}
+                    className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border rounded-lg"
+                  >
                     <div className="space-y-2">
                       <Label>Child {index + 1} Name</Label>
                       <Input
                         value={child.name}
-                        onChange={(e) => handleChildChange(index, 'name', e.target.value)}
+                        onChange={e =>
+                          handleChildChange(index, 'name', e.target.value)
+                        }
                         placeholder={`Child ${index + 1} name`}
                       />
                     </div>
@@ -317,7 +345,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                       <Label>Gender</Label>
                       <Select
                         value={child.gender}
-                        onValueChange={(value) => handleChildChange(index, 'gender', value)}
+                        onValueChange={value =>
+                          handleChildChange(index, 'gender', value)
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select gender" />
@@ -343,20 +373,20 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             Photos
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6 cursor-pointer">
           <PhotoUploadCard
             file={data.personalPhoto}
-            onUpload={(file) => handleFileUpload('personalPhoto', file)}
+            onUpload={file => handleFileUpload('personalPhoto', file)}
             onRemove={() => handleFileUpload('personalPhoto', null)}
             label="Personal Photo"
-            description="Upload a clear photo of this family member"
+            description="Upload a clear photo "
           />
           <PhotoUploadCard
             file={data.familyPhoto}
-            onUpload={(file) => handleFileUpload('familyPhoto', file)}
+            onUpload={file => handleFileUpload('familyPhoto', file)}
             onRemove={() => handleFileUpload('familyPhoto', null)}
             label="Family Photo"
-            description="Upload a family photo including this member"
+            description="Upload a family photo "
           />
         </CardContent>
       </Card>

@@ -11,7 +11,7 @@ interface ContactInfoStepProps extends StepProps {
 
 export const ContactInfoStep: React.FC<ContactInfoStepProps> = ({
   data,
-  onChange
+  onChange,
 }) => {
   const handleInputChange = (field: keyof ContactInfo, value: string) => {
     onChange({ [field]: value });
@@ -36,45 +36,45 @@ export const ContactInfoStep: React.FC<ContactInfoStepProps> = ({
               id="contactNumber"
               type="tel"
               value={data.contactNumber}
-              onChange={(e) => handleInputChange('contactNumber', e.target.value)}
+              onChange={e => handleInputChange('contactNumber', e.target.value)}
               placeholder="+91 XXXXX XXXXX"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="whatsappNumber">WhatsApp Number</Label>
+            <Label htmlFor="whatsappNumber">WhatsApp Number *</Label>
             <Input
               id="whatsappNumber"
               type="tel"
               value={data.whatsappNumber}
-              onChange={(e) => handleInputChange('whatsappNumber', e.target.value)}
+              onChange={e =>
+                handleInputChange('whatsappNumber', e.target.value)
+              }
               placeholder="+91 XXXXX XXXXX"
             />
           </div>
 
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="email" className="flex items-center gap-2">
-              <Mail className="h-4 w-4" />
               Email Address
             </Label>
             <Input
               id="email"
               type="email"
               value={data.email}
-              onChange={(e) => handleInputChange('email', e.target.value)}
+              onChange={e => handleInputChange('email', e.target.value)}
               placeholder="example@email.com"
             />
           </div>
 
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="location" className="flex items-center gap-2">
-              <MapPin className="h-4 w-4" />
               Location
             </Label>
             <Input
               id="location"
               value={data.location}
-              onChange={(e) => handleInputChange('location', e.target.value)}
+              onChange={e => handleInputChange('location', e.target.value)}
               placeholder="City, State, Country"
             />
           </div>

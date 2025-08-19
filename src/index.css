@@ -46,11 +46,11 @@ All colors MUST be HSL.
     --family-success: 142 76% 36%;
     --family-warning: 38 92% 50%;
     --family-error: 0 84.2% 60.2%;
-    
+
     /* Progress colors */
     --progress-bg: 214.3 31.8% 91.4%;
     --progress-fill: 210 100% 56%;
-    
+
     /* Step indicator */
     --step-inactive: 215.4 16.3% 46.9%;
     --step-active: 210 100% 56%;
@@ -122,4 +122,15 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
   }
+}
+
+html {
+  overflow: -moz-scrollbars-none; /* Firefox */
+  -ms-overflow-style: none; /* IE */
+  scrollbar-width: none; /* Firefox */
+}
+
+html::-webkit-scrollbar {
+  width: 0px;
+  background: transparent; /* Chrome/Safari/Webkit */
 }
