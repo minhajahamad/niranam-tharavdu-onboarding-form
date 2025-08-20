@@ -15,7 +15,10 @@ export const API_URL = {
   CONTACT: {
     POST_CONTACT: 'api/contacts/',
   },
-  EMPLOYEMENT:{
-    POST_EMPLOYEMENT:'api/employments/'
-  }
+  EMPLOYEMENT: {
+    POST_EMPLOYEMENT: 'api/employments/',
+  },
+  PREVIEW_DETAILS: {
+    GET_FULL_DETAILS: 'api/full-details/',
+  },
 };

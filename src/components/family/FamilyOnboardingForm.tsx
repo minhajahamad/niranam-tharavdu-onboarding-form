@@ -31,7 +31,7 @@ const STEPS = [
   },
   { id: 4, title: 'Employment', description: 'Work and career details' },
   { id: 5, title: 'Preview', description: 'Review and submit' },
-];
+]
 
 const getInitialFormData = (): FormData => {
   return {
@@ -141,30 +141,30 @@ export const FamilyOnboardingForm = () => {
     if (!whatsappNumber.trim()) {
       errors.push('WhatsApp number is required');
     } else if (!/^\+?[\d\s-()]+$/.test(whatsappNumber.trim())) {
-      errors.push('Please enter a valid WhatsApp number');
+      errors.push('Please enter a valid WhatsApp number')
     }
 
     return {
       isValid: errors.length === 0,
       errors,
-    };
-  };
+    }
+  }
 
   const validateEmployment = () => {
-    const { jobStatus, companyName, designation } = formData.employment;
-    const errors = [];
+    const { jobStatus, companyName, designation } = formData.employment
+    const errors = []
 
     if (!jobStatus) {
-      errors.push('Job status is required');
+      errors.push('Job status is required')
     }
 
     // If job status is "Working", validate required fields
     if (jobStatus === 'Working') {
       if (!companyName.trim()) {
-        errors.push('Company name is required for working status');
+        errors.push('Company name is required for working status')
       }
       if (!designation.trim()) {
-        errors.push('Designation is required for working status');
+        errors.push('Designation is required for working status')
       }
     }
 
@@ -767,9 +767,9 @@ export const FamilyOnboardingForm = () => {
       case 5:
         return (
           <PreviewStep
-            formData={formData}
+            // formData={formData}
             onEdit={goToStep}
-            isAlive={isAlive}
+            // isAlive={isAlive}
           />
         );
       default:
