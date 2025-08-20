@@ -15,4 +15,7 @@ export const API_URL = {
   CONTACT: {
     POST_CONTACT: 'api/contacts/',
   },
+  EMPLOYEMENT:{
+    POST_EMPLOYEMENT:'api/employments/'
+  }
 };

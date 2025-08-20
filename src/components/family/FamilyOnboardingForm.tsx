@@ -83,7 +83,6 @@ export const FamilyOnboardingForm = () => {
   const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null);
   const [createdMemberId, setCreatedMemberId] = useState<string | null>(null);
 
-
   // Create refs for step validation
   const personalDetailsValidationRef = useRef<any>();
 
@@ -143,6 +142,30 @@ export const FamilyOnboardingForm = () => {
       errors.push('WhatsApp number is required');
     } else if (!/^\+?[\d\s-()]+$/.test(whatsappNumber.trim())) {
       errors.push('Please enter a valid WhatsApp number');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  };
+
+  const validateEmployment = () => {
+    const { jobStatus, companyName, designation } = formData.employment;
+    const errors = [];
+
+    if (!jobStatus) {
+      errors.push('Job status is required');
+    }
+
+    // If job status is "Working", validate required fields
+    if (jobStatus === 'Working') {
+      if (!companyName.trim()) {
+        errors.push('Company name is required for working status');
+      }
+      if (!designation.trim()) {
+        errors.push('Designation is required for working status');
+      }
     }
 
     return {
@@ -249,7 +272,7 @@ export const FamilyOnboardingForm = () => {
   const submitContactData = async () => {
     try {
       console.log('=== DEBUG: Submitting Contact Data ===');
-      
+
       // Get member_id from localStorage
       let memberId;
       try {
@@ -260,12 +283,14 @@ export const FamilyOnboardingForm = () => {
       }
 
       if (!memberId) {
-        throw new Error('Member ID not found. Please complete previous steps first.');
+        throw new Error(
+          'Member ID not found. Please complete previous steps first.'
+        );
       }
 
       // Prepare contact data payload
       const contactPayload = {
-        member_id: parseInt(memberId), // Assuming the API expects member ID as integer
+        member_id: parseInt(memberId), // API expects member_id, not member
         phone_number: formData.contactInfo.contactNumber.trim(),
         whatsapp_number: formData.contactInfo.whatsappNumber.trim() || null,
         email: formData.contactInfo.email.trim() || null,
@@ -273,7 +298,10 @@ export const FamilyOnboardingForm = () => {
       };
 
       console.log('Contact payload:', contactPayload);
-      console.log('API URL:', API_URL.CONTACT?.POST_CONTACT || 'API_URL.CONTACT.POST_CONTACT');
+      console.log(
+        'API URL:',
+        API_URL.CONTACT?.POST_CONTACT || 'API_URL.CONTACT.POST_CONTACT'
+      );
 
       // Make API call (you'll need to add this to your API_URL configuration)
       const response = await axiosInstance.post(
@@ -338,7 +366,115 @@ export const FamilyOnboardingForm = () => {
         errorMessage =
           'Network error: Unable to connect to server. Please check your connection.';
       } else {
-        errorMessage = error.message || 'An unexpected error occurred. Please try again.';
+        errorMessage =
+          error.message || 'An unexpected error occurred. Please try again.';
+      }
+
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const submitEmploymentData = async () => {
+    try {
+      console.log('=== DEBUG: Submitting Employment Data ===');
+
+      // Get member_id from localStorage
+      let memberId;
+      try {
+        memberId = localStorage.getItem('member_id');
+        console.log('Retrieved member ID from localStorage:', memberId);
+      } catch (e) {
+        console.log('localStorage not available (artifacts environment):', e);
+      }
+
+      if (!memberId) {
+        throw new Error(
+          'Member ID not found. Please complete previous steps first.'
+        );
+      }
+
+      // Prepare employment data payload
+      const employmentPayload = {
+        member_id: parseInt(memberId),
+        job_status: formData.employment.jobStatus,
+        company_name: formData.employment.companyName.trim() || null,
+        designation: formData.employment.designation.trim() || null,
+        work_location: formData.employment.workLocation.trim() || null,
+      };
+
+      console.log('Employment payload:', employmentPayload);
+      // console.log('API URL:', API_URL.EMPLOYMENT?.POST_EMPLOYMENT || 'API_URL.EMPLOYMENT.POST_EMPLOYMENT');
+
+      const response = await axiosInstance.post(
+        API_URL.EMPLOYEMENT.POST_EMPLOYEMENT,
+        employmentPayload
+        // {
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //   },
+        // }
+      );
+
+      console.log('Employment created successfully:', response.data);
+
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error creating employment:', error);
+      console.error('Error response:', error.response);
+
+      let errorMessage = '';
+
+      if (error.response) {
+        console.log('Response data:', error.response.data);
+        console.log('Response status:', error.response.status);
+
+        if (error.response.data && typeof error.response.data === 'object') {
+          const errorData = error.response.data;
+          console.log('Full error data:', JSON.stringify(errorData, null, 2));
+
+          // Handle common validation errors
+          if (errorData.job_status && Array.isArray(errorData.job_status)) {
+            errorMessage = `Job Status: ${errorData.job_status.join(', ')}`;
+          } else if (
+            errorData.company_name &&
+            Array.isArray(errorData.company_name)
+          ) {
+            errorMessage = `Company Name: ${errorData.company_name.join(', ')}`;
+          } else if (
+            errorData.member_id &&
+            Array.isArray(errorData.member_id)
+          ) {
+            errorMessage = `Member ID: ${errorData.member_id.join(', ')}`;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          } else if (errorData.detail) {
+            errorMessage = errorData.detail;
+          } else {
+            // Extract all error messages
+            const errors = Object.entries(errorData)
+              .map(([field, messages]) => {
+                if (Array.isArray(messages)) {
+                  return `${field}: ${messages.join(', ')}`;
+                }
+                return `${field}: ${messages}`;
+              })
+              .join('\n');
+            errorMessage = errors || JSON.stringify(errorData);
+          }
+        } else {
+          errorMessage =
+            error.response.data?.message ||
+            error.response.data?.error ||
+            `Server error: ${error.response.status}`;
+        }
+      } else if (error.request) {
+        errorMessage =
+          'Network error: Unable to connect to server. Please check your connection.';
+      } else {
+        errorMessage =
+          error.message || 'An unexpected error occurred. Please try again.';
       }
 
       return { success: false, error: errorMessage };
@@ -518,7 +654,43 @@ export const FamilyOnboardingForm = () => {
         }
       } catch (error) {
         console.error('Unexpected error during contact submission:', error);
-        alert('An unexpected error occurred while saving contact info. Please try again.');
+        alert(
+          'An unexpected error occurred while saving contact info. Please try again.'
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else if (currentStep === 4) {
+      // Handle employment step
+      console.log('=== DEBUG: nextStep called for Employment ===');
+
+      const validation = validateEmployment();
+
+      if (!validation.isValid) {
+        console.log('Employment validation failed:', validation.errors);
+        alert(
+          `Please fix the following errors:\n${validation.errors.join('\n')}`
+        );
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        console.log('Submitting employment information...');
+        const result = await submitEmploymentData();
+
+        if (result.success) {
+          alert('Employment information saved successfully!');
+          setCurrentStep(currentStep + 1); // Go to preview step
+        } else {
+          alert(`Failed to save employment information: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Unexpected error during employment submission:', error);
+        alert(
+          'An unexpected error occurred while saving employment info. Please try again.'
+        );
       } finally {
         setIsSubmitting(false);
       }
@@ -671,8 +843,13 @@ export const FamilyOnboardingForm = () => {
               {isSubmitting ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  {currentStep === 2 ? 'Saving Member...' : 
-                   currentStep === 3 ? 'Saving Contact...' : 'Saving...'}
+                  {currentStep === 2
+                    ? 'Saving Member...'
+                    : currentStep === 3
+                    ? 'Saving Contact...'
+                    : currentStep === 4
+                    ? 'Saving Employment...'
+                    : 'Saving...'}
                 </>
               ) : (
                 <>
