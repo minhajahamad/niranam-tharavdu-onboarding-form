@@ -12,4 +12,7 @@ export const API_URL = {
   MEMBER: {
     POST_MEMBER: 'api/members/',
   },
+  CONTACT: {
+    POST_CONTACT: 'api/contacts/',
+  },
 };

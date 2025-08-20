@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -80,7 +80,11 @@ export const FamilyOnboardingForm = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(getInitialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null); // Track selected head UUID
+  const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null);
+  const [createdMemberId, setCreatedMemberId] = useState<string | null>(null); // Track created member ID
+
+  // Create refs for step validation
+  const personalDetailsValidationRef = useRef<any>();
 
   const isAlive = formData.personalDetails.isDeceased !== 'Yes';
   const maxStep = isAlive ? 5 : 3; // Skip contact and employment if deceased
@@ -92,7 +96,6 @@ export const FamilyOnboardingForm = () => {
     }));
   };
 
-  // New function to handle head selection from FamilyDetailsStep
   const handleHeadSelection = (headUuid: string | null) => {
     setSelectedHeadUuid(headUuid);
   };
@@ -110,135 +113,271 @@ export const FamilyOnboardingForm = () => {
     return true;
   };
 
+  const validatePersonalDetails = () => {
+    // Call the validation function from PersonalDetailsStep
+    if (
+      personalDetailsValidationRef.current &&
+      typeof personalDetailsValidationRef.current === 'function'
+    ) {
+      const result = personalDetailsValidationRef.current();
+      return result;
+    }
+    return {
+      isValid: false,
+      errors: ['Validation not available'],
+      formData: null,
+    };
+  };
+
+  const submitMemberData = async (memberFormData: FormData) => {
+    try {
+      console.log('=== DEBUG: Submitting Member Data ===');
+      console.log('API URL:', API_URL.MEMBER.POST_MEMBER);
+
+      // Log form data contents for debugging
+      console.log('FormData contents:');
+      // Log FormData without using entries() to avoid TypeScript issues
+      console.log('FormData prepared successfully with all member data');
+
+      const response = await axiosInstance.post(
+        API_URL.MEMBER.POST_MEMBER,
+        memberFormData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      console.log('Member created successfully:', response.data);
+
+      // Store the created member ID (not UUID)
+      const memberId = response.data.data.id;
+      setCreatedMemberId(memberId);
+      console.log(memberId);
+
+      // Store member_id in localStorage
+      try {
+        localStorage.setItem('member_id', memberId);
+        console.log('Stored member ID in localStorage:', memberId);
+      } catch (e) {
+        console.log('localStorage not available (artifacts environment):', e);
+      }
+
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error creating member:', error);
+      console.error('Error response:', error.response);
+
+      let errorMessage = '';
+
+      if (error.response) {
+        console.log('Response data:', error.response.data);
+        console.log('Response status:', error.response.status);
+
+        if (error.response.data && typeof error.response.data === 'object') {
+          const errorData = error.response.data;
+          console.log('Full error data:', JSON.stringify(errorData, null, 2));
+
+          // Handle Django validation errors
+          if (errorData.name && Array.isArray(errorData.name)) {
+            errorMessage = `Name: ${errorData.name.join(', ')}`;
+          } else if (errorData.gender && Array.isArray(errorData.gender)) {
+            errorMessage = `Gender: ${errorData.gender.join(', ')}`;
+          } else if (
+            errorData.date_of_birth &&
+            Array.isArray(errorData.date_of_birth)
+          ) {
+            errorMessage = `Date of Birth: ${errorData.date_of_birth.join(
+              ', '
+            )}`;
+          } else if (errorData.head && Array.isArray(errorData.head)) {
+            errorMessage = `Head: ${errorData.head.join(', ')}`;
+          } else if (errorData.children && Array.isArray(errorData.children)) {
+            errorMessage = `Children: ${errorData.children.join(', ')}`;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          } else if (errorData.detail) {
+            errorMessage = errorData.detail;
+          } else {
+            // Extract all error messages
+            const errors = Object.entries(errorData)
+              .map(([field, messages]) => {
+                if (Array.isArray(messages)) {
+                  return `${field}: ${messages.join(', ')}`;
+                }
+                return `${field}: ${messages}`;
+              })
+              .join('\n');
+            errorMessage = errors || JSON.stringify(errorData);
+          }
+        } else {
+          errorMessage =
+            error.response.data?.message ||
+            error.response.data?.error ||
+            `Server error: ${error.response.status}`;
+        }
+      } else if (error.request) {
+        errorMessage =
+          'Network error: Unable to connect to server. Please check your connection.';
+      } else {
+        errorMessage = 'An unexpected error occurred. Please try again.';
+      }
+
+      return { success: false, error: errorMessage };
+    }
+  };
+
   const nextStep = async () => {
     if (currentStep === 1) {
-      // Validate family details before proceeding
+      // Validate and handle family details step
       if (!validateFamilyDetails()) {
         return;
       }
 
-      console.log('=== DEBUG: nextStep called ===');
+      console.log('=== DEBUG: nextStep called for Family Details ===');
       console.log('selectedHeadUuid:', selectedHeadUuid);
-      console.log('formData.familyDetails.headOfFamily:', formData.familyDetails.headOfFamily);
-      console.log('formData.familyDetails.branch:', formData.familyDetails.branch);
+      console.log(
+        'formData.familyDetails.headOfFamily:',
+        formData.familyDetails.headOfFamily
+      );
+      console.log(
+        'formData.familyDetails.branch:',
+        formData.familyDetails.branch
+      );
 
       setIsSubmitting(true);
-      
+
       try {
         let headUuid: string;
 
-        // Check if an existing head was selected
         if (selectedHeadUuid) {
-          // Existing head selected - just store UUID and move to next step
           console.log('Using existing head with UUID:', selectedHeadUuid);
           headUuid = selectedHeadUuid;
-          
-          // Store in localStorage (Note: won't work in artifacts environment)
+
           try {
             localStorage.setItem('familyHeadUuid', headUuid);
             console.log('Stored existing head UUID in localStorage:', headUuid);
           } catch (e) {
-            console.log('localStorage not available (artifacts environment):', e);
+            console.log(
+              'localStorage not available (artifacts environment):',
+              e
+            );
           }
-          
+
           alert('Existing family head selected successfully!');
-          
         } else {
-          // New head - make API call to create it
           const payload = {
             branch: parseInt(formData.familyDetails.branch),
             head_name: formData.familyDetails.headOfFamily.trim(),
           };
-          
-          console.log('Creating new head with payload:', payload);
-          console.log('API URL:', API_URL.HEAD_MEMBER.POST_HEAD_MEMBER);
 
-          const response = await axiosInstance.post(API_URL.HEAD_MEMBER.POST_HEAD_MEMBER, payload);
-          
+          console.log('Creating new head with payload:', payload);
+          const response = await axiosInstance.post(
+            API_URL.HEAD_MEMBER.POST_HEAD_MEMBER,
+            payload
+          );
+
           console.log('New head created successfully:', response.data);
-          
-          // Extract UUID from response
           headUuid = response.data.uuid;
-          
-          // Store in localStorage (Note: won't work in artifacts environment)
+
           try {
             localStorage.setItem('familyHeadUuid', headUuid);
             console.log('Stored new head UUID in localStorage:', headUuid);
           } catch (e) {
-            console.log('localStorage not available (artifacts environment):', e);
+            console.log(
+              'localStorage not available (artifacts environment):',
+              e
+            );
           }
         }
-        
+
         alert('Family details processed successfully!');
-        
-        // Move to next step
         setCurrentStep(currentStep + 1);
-        
       } catch (error) {
         console.error('Error processing family details:', error);
-        console.error('Error response:', error.response);
-        
-        // Handle different error scenarios
-        if (error.response) {
-          // Server responded with error status
-          console.log('Response data:', error.response.data);
-          console.log('Response status:', error.response.status);
-          console.log('Response headers:', error.response.headers);
-          
-          let errorMessage = '';
-          
-          // Handle Django validation errors
-          if (error.response.data && typeof error.response.data === 'object') {
-            const errorData = error.response.data;
-            
-            // Log the full error data for debugging
-            console.log('Full error data:', JSON.stringify(errorData, null, 2));
-            
-            // Check for field-specific validation errors
-            if (errorData.head_name && Array.isArray(errorData.head_name)) {
-              errorMessage = errorData.head_name.join(', ');
-            } else if (errorData.branch && Array.isArray(errorData.branch)) {
-              errorMessage = errorData.branch.join(', ');
-            } else if (errorData.message) {
-              errorMessage = errorData.message;
-            } else if (errorData.error) {
-              errorMessage = errorData.error;
-            } else if (errorData.detail) {
-              errorMessage = errorData.detail;
-            } else {
-              // Extract all error messages
-              const errors = Object.values(errorData)
-                .flat()
-                .filter(msg => typeof msg === 'string')
-                .join(', ');
-              errorMessage = errors || JSON.stringify(errorData);
-            }
+
+        let errorMessage = '';
+        if (error.response?.data) {
+          const errorData = error.response.data;
+          if (errorData.head_name && Array.isArray(errorData.head_name)) {
+            errorMessage = errorData.head_name.join(', ');
+          } else if (errorData.branch && Array.isArray(errorData.branch)) {
+            errorMessage = errorData.branch.join(', ');
           } else {
-            errorMessage = error.response.data?.message || 
-                          error.response.data?.error || 
-                          `Server error: ${error.response.status}`;
+            errorMessage =
+              errorData.message ||
+              errorData.error ||
+              errorData.detail ||
+              `Server error: ${error.response.status}`;
           }
-          
-          // Special handling for duplicate head name error
-          if (errorMessage.includes('already exists') || errorMessage.includes('duplicate')) {
-            errorMessage += '\n\nSuggestions:\n1. Try a different name\n2. Or search and select the existing head from the dropdown';
+
+          if (
+            errorMessage.includes('already exists') ||
+            errorMessage.includes('duplicate')
+          ) {
+            errorMessage +=
+              '\n\nSuggestions:\n1. Try a different name\n2. Or search and select the existing head from the dropdown';
           }
-          
-          alert(`Failed to process family details: ${errorMessage}`);
         } else if (error.request) {
-          // Request was made but no response received
-          alert('Network error: Unable to connect to server. Please check your connection.');
+          errorMessage =
+            'Network error: Unable to connect to server. Please check your connection.';
         } else {
-          // Something else happened
-          alert('An unexpected error occurred. Please try again.');
+          errorMessage = 'An unexpected error occurred. Please try again.';
         }
-        
-        return; // Don't proceed to next step if there's an error
+
+        alert(`Failed to process family details: ${errorMessage}`);
+        return;
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else if (currentStep === 2) {
+      // Validate and submit personal details
+      console.log('=== DEBUG: nextStep called for Personal Details ===');
+
+      const validation = validatePersonalDetails();
+
+      if (!validation.isValid) {
+        console.log('Personal details validation failed:', validation.errors);
+        alert(
+          `Please fix the following errors:\n${validation.errors.join('\n')}`
+        );
+        return;
+      }
+
+      if (!validation.formData) {
+        alert('Form data preparation failed. Please try again.');
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        console.log('Submitting personal details...');
+        const result = await submitMemberData(validation.formData);
+
+        if (result.success) {
+          alert('Personal details saved successfully!');
+
+          // Move to next step based on whether person is alive
+          if (isAlive) {
+            setCurrentStep(currentStep + 1); // Go to contact info
+          } else {
+            setCurrentStep(5); // Skip to preview if deceased
+          }
+        } else {
+          alert(`Failed to save personal details: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Unexpected error during member submission:', error);
+        alert('An unexpected error occurred while saving. Please try again.');
       } finally {
         setIsSubmitting(false);
       }
     } else {
-      // Handle other steps
+      // Handle other steps (contact info, employment)
       if (currentStep === 2 && !isAlive) {
         setCurrentStep(5); // Skip to preview if deceased
       } else if (currentStep < maxStep) {
@@ -256,7 +395,6 @@ export const FamilyOnboardingForm = () => {
   };
 
   const goToStep = (step: number) => {
-    // Allow navigation to any valid step based on current form state
     const validMaxStep = formData.personalDetails.isDeceased !== 'Yes' ? 5 : 3;
     if (step >= 1 && step <= validMaxStep) {
       setCurrentStep(step);
@@ -265,7 +403,9 @@ export const FamilyOnboardingForm = () => {
 
   const handleSubmit = () => {
     console.log('Form submitted:', formData);
-    // Handle form submission
+    console.log('Created member ID:', createdMemberId);
+    // Handle final form submission or navigation
+    alert('Registration completed successfully!');
   };
 
   const getProgressPercentage = () => {
@@ -290,6 +430,7 @@ export const FamilyOnboardingForm = () => {
           <PersonalDetailsStep
             data={formData.personalDetails}
             onChange={data => updateFormData('personalDetails', data)}
+            onValidate={personalDetailsValidationRef}
           />
         );
       case 3:
@@ -385,7 +526,7 @@ export const FamilyOnboardingForm = () => {
               {isSubmitting ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Saving...
+                  {currentStep === 2 ? 'Saving Member...' : 'Saving...'}
                 </>
               ) : (
                 <>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,11 +19,7 @@ const GENDER_OPTIONS = ['Male', 'Female'];
 
 interface PersonalDetailsStepProps extends StepProps {
   data: PersonalDetails;
-  onValidate?: () => {
-    isValid: boolean;
-    errors: string[];
-    formData?: FormData;
-  };
+  onValidate?: React.MutableRefObject<any>;
 }
 
 export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
@@ -75,9 +71,16 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
     let headUuid = '';
     try {
       headUuid = localStorage.getItem('familyHeadUuid') || '';
+      console.log('Retrieved head UUID from localStorage:', headUuid);
     } catch (e) {
       console.log('localStorage not available (artifacts environment):', e);
       // In artifacts environment, you might pass this as a prop instead
+    }
+
+    // Validate that we have a head UUID
+    if (!headUuid) {
+      console.error('No family head UUID found in localStorage');
+      throw new Error('Family head UUID is required but not found. Please complete step 1 first.');
     }
 
     // Basic information
@@ -88,7 +91,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
     );
     formData.append('gender', data.gender || '');
     formData.append('date_of_birth', data.dateOfBirth || '');
-    formData.append('head', headUuid); // UUID of the family head
+    formData.append('head_uuid', headUuid); // Use head_uuid as expected by the API
 
     // Death date if applicable
     if (data.isDeceased === 'Yes' && data.dateOfDeath) {
@@ -124,31 +127,20 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
     return formData;
   };
 
-  // Expose validation function to parent
-  React.useImperativeHandle(onValidate, () => ({
-    validate: () => {
-      setShowValidation(true);
-      const validation = validateForm();
-      return {
-        ...validation,
-        formData: validation.isValid ? prepareFormData() : undefined,
-      };
-    },
-  }));
+  // Create the validation function that will be called by parent
+  const performValidation = () => {
+    setShowValidation(true);
+    const validation = validateForm();
+    return {
+      ...validation,
+      formData: validation.isValid ? prepareFormData() : undefined,
+    };
+  };
 
-  // Alternative approach: if parent calls onValidate as a function
+  // Expose validation function to parent through ref
   React.useEffect(() => {
     if (onValidate) {
-      const validationFn = () => {
-        setShowValidation(true);
-        const validation = validateForm();
-        return {
-          ...validation,
-          formData: validation.isValid ? prepareFormData() : undefined,
-        };
-      };
-      // Store validation function reference
-      (onValidate as any).current = validationFn;
+      onValidate.current = performValidation;
     }
   }, [data, onValidate]);
 
@@ -269,7 +261,19 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
           accept="image/*"
           onChange={e => {
             const file = e.target.files?.[0];
-            if (file) onUpload(file);
+            if (file) {
+              // Validate file size (e.g., max 5MB)
+              if (file.size > 5 * 1024 * 1024) {
+                alert('File size should be less than 5MB');
+                return;
+              }
+              // Validate file type
+              if (!file.type.startsWith('image/')) {
+                alert('Please upload only image files');
+                return;
+              }
+              onUpload(file);
+            }
           }}
           className="hidden"
           id={`upload-${label.replace(/\s+/g, '-').toLowerCase()}`}
@@ -289,15 +293,22 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="memberName">Member Name *</Label>
+            <Label htmlFor="memberName">
+              Member Name <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="memberName"
               placeholder="Enter your name"
               value={data.memberName || ''}
               onChange={e => handleInputChange('memberName', e.target.value)}
-              className={!data.memberName?.trim() ? 'border-red-200' : ''}
+              required
+              className={
+                showValidation && !data.memberName?.trim()
+                  ? 'border-red-200'
+                  : ''
+              }
             />
-            {!data.memberName?.trim() && (
+            {showValidation && !data.memberName?.trim() && (
               <p className="text-sm text-red-500">Member name is required</p>
             )}
           </div>
@@ -319,12 +330,18 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Gender *</Label>
+            <Label>
+              Gender <span className="text-red-500">*</span>
+            </Label>
             <Select
               value={data.gender || ''}
               onValueChange={value => handleInputChange('gender', value)}
             >
-              <SelectTrigger className={!data.gender ? 'border-red-200' : ''}>
+              <SelectTrigger
+                className={
+                  showValidation && !data.gender ? 'border-red-200' : ''
+                }
+              >
                 <SelectValue placeholder="Select gender" />
               </SelectTrigger>
               <SelectContent>
@@ -335,20 +352,24 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 ))}
               </SelectContent>
             </Select>
-            {!data.gender && (
+            {showValidation && !data.gender && (
               <p className="text-sm text-red-500">Gender is required</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label>Date of Birth *</Label>
+            <Label>
+              Date of Birth <span className="text-red-500">*</span>
+            </Label>
             <EnhancedDatePicker
               value={data.dateOfBirth || ''}
               onChange={date => handleInputChange('dateOfBirth', date)}
               placeholder="Select date of birth"
-              className={!data.dateOfBirth ? 'border-red-200' : ''}
+              className={
+                showValidation && !data.dateOfBirth ? 'border-red-200' : ''
+              }
             />
-            {!data.dateOfBirth && (
+            {showValidation && !data.dateOfBirth && (
               <p className="text-sm text-red-500">Date of birth is required</p>
             )}
           </div>
@@ -399,6 +420,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 <Label htmlFor="spouseName">Spouse Name</Label>
                 <Input
                   id="spouseName"
+                  placeholder="Enter spouse's name"
                   value={data.spouseName || ''}
                   onChange={e =>
                     handleInputChange('spouseName', e.target.value)
@@ -477,18 +499,32 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                     className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border rounded-lg"
                   >
                     <div className="space-y-2">
-                      <Label>Child {index + 1} Name</Label>
+                      <Label>
+                        Child {index + 1} Name{' '}
+                        <span className="text-red-500">*</span>
+                      </Label>
                       <Input
                         value={child.name || ''}
                         onChange={e =>
                           handleChildChange(index, 'name', e.target.value)
                         }
                         placeholder={`Child ${index + 1} name`}
-                        className={!child.name?.trim() ? 'border-red-200' : ''}
+                        className={
+                          showValidation && !child.name?.trim()
+                            ? 'border-red-200'
+                            : ''
+                        }
                       />
+                      {showValidation && !child.name?.trim() && (
+                        <p className="text-sm text-red-500">
+                          Child name is required
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label>Gender</Label>
+                      <Label>
+                        Gender <span className="text-red-500">*</span>
+                      </Label>
                       <Select
                         value={child.gender || ''}
                         onValueChange={value =>
@@ -496,7 +532,11 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                         }
                       >
                         <SelectTrigger
-                          className={!child.gender ? 'border-red-200' : ''}
+                          className={
+                            showValidation && !child.gender
+                              ? 'border-red-200'
+                              : ''
+                          }
                         >
                           <SelectValue placeholder="Select gender" />
                         </SelectTrigger>
@@ -505,6 +545,11 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                           <SelectItem value="Daughter">Daughter</SelectItem>
                         </SelectContent>
                       </Select>
+                      {showValidation && !child.gender && (
+                        <p className="text-sm text-red-500">
+                          Child gender is required
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -521,20 +566,20 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             Photos
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6 cursor-pointer">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <PhotoUploadCard
             file={data.personalPhoto}
             onUpload={file => handleFileUpload('personalPhoto', file)}
             onRemove={() => handleFileUpload('personalPhoto', null)}
             label="Personal Photo"
-            description="Upload a clear photo "
+            description="Upload a clear photo (Max 5MB)"
           />
           <PhotoUploadCard
             file={data.familyPhoto}
             onUpload={file => handleFileUpload('familyPhoto', file)}
             onRemove={() => handleFileUpload('familyPhoto', null)}
             label="Family Photo"
-            description="Upload a family photo "
+            description="Upload a family photo (Max 5MB)"
           />
         </CardContent>
       </Card>
