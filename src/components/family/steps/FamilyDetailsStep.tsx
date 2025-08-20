@@ -41,24 +41,6 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   const [loading, setLoading] = useState(false);
   const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null);
 
-  // Initialize form data from props on component mount
-  useEffect(() => {
-    if (data.headOfFamily) {
-      setHeadOfFamilyInput(data.headOfFamily);
-
-      // Try to restore selectedHeadUuid from storage or context
-      try {
-        const storedHeadUuid = localStorage.getItem('familyHeadUuid');
-        if (storedHeadUuid) {
-          setSelectedHeadUuid(storedHeadUuid);
-          onHeadSelection?.(storedHeadUuid);
-        }
-      } catch (e) {
-        console.log('localStorage not available');
-      }
-    }
-  }, [data.headOfFamily]);
-
   useEffect(() => {
     const fetchBranches = async () => {
       try {
@@ -80,26 +62,17 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   ) => {
     if (typeof head === 'string') {
       // "Create new head" - user typed a new name
-
+      
       // Check if this name exists in the current search results
-      const existingHead = heads.find(
-        h => h.head_name.toLowerCase() === head.toLowerCase()
-      );
+      const existingHead = heads.find(h => h.head_name.toLowerCase() === head.toLowerCase());
       if (existingHead) {
         // If the name exists in search results, select the existing one instead
         setHeadOfFamilyInput(existingHead.head_name);
         handleInputChange('headOfFamily', existingHead.head_name);
         setSelectedHeadUuid(existingHead.uuid);
         onHeadSelection?.(existingHead.uuid);
-        console.log(
-          'Found existing head, selecting instead of creating new -',
-          existingHead.head_name,
-          'UUID:',
-          existingHead.uuid
-        );
-        alert(
-          `Head "${existingHead.head_name}" already exists. Selected the existing one.`
-        );
+        console.log('Found existing head, selecting instead of creating new -', existingHead.head_name, 'UUID:', existingHead.uuid);
+        alert(`Head "${existingHead.head_name}" already exists. Selected the existing one.`);
       } else {
         // Proceed with creating new head
         setHeadOfFamilyInput(head);
@@ -127,11 +100,10 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   const handleHeadOfFamilyInputChange = async (value: string) => {
     setHeadOfFamilyInput(value);
     handleInputChange('headOfFamily', value);
-
-    if (value !== data.headOfFamily) {
-      setSelectedHeadUuid(null);
-      onHeadSelection?.(null);
-    }
+    
+    // Reset selection when user types manually
+    setSelectedHeadUuid(null);
+    onHeadSelection?.(null);
 
     // 🛑 If no branch selected, don't search
     if (!data.branch) {
@@ -167,18 +139,10 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
 
   // 🔄 Reset heads when branch changes
   useEffect(() => {
-    if (data.branch && data.headOfFamily) {
-      // If we have existing data, don't reset it
-      return;
-    }
-
-    // Only reset if we don't have existing data
-    if (!data.headOfFamily) {
-      setHeadOfFamilyInput('');
-      setHeads([]);
-      setSelectedHeadUuid(null);
-      onHeadSelection?.(null);
-    }
+    setHeadOfFamilyInput('');
+    setHeads([]);
+    setSelectedHeadUuid(null);
+    onHeadSelection?.(null);
   }, [data.branch]);
 
   // Close dropdown when clicking outside
@@ -237,9 +201,7 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                   setHeadOfFamilyOpen(headOfFamilyInput.length > 0)
                 }
                 disabled={!data.branch}
-                className={
-                  selectedHeadUuid ? 'border-green-500 bg-green-50' : ''
-                }
+                className={selectedHeadUuid ? 'border-green-500 bg-green-50' : ''}
               />
               {selectedHeadUuid && (
                 <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
@@ -291,10 +253,12 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                                 <div className="flex flex-col">
                                   <span>Create new: "{headOfFamilyInput}"</span>
                                   <span className="text-xs text-orange-600">
-                                     Make sure this name doesn't exist
+                                    ⚠️ Make sure this name doesn't exist
                                   </span>
                                 </div>
-                                <span className="ml-auto text-xs">New</span>
+                                <span className="ml-auto text-xs">
+                                  New
+                                </span>
                               </CommandItem>
                             )
                           )}
@@ -306,7 +270,9 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
               )}
             </div>
             {selectedHeadUuid && (
-              <p className="text-sm text-green-600">✓ Existing head selected</p>
+              <p className="text-sm text-green-600">
+                ✓ Existing head selected
+              </p>
             )}
             {!selectedHeadUuid && headOfFamilyInput && (
               <p className="text-sm text-blue-600">

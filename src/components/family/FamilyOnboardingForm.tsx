@@ -82,51 +82,8 @@ export const FamilyOnboardingForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null); // Track selected head UUID
 
-  // Track if we're editing an existing head (determines POST vs PATCH)
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [originalHeadData, setOriginalHeadData] = useState<{
-    headOfFamily: string;
-    branch: string;
-    headUuid: string;
-  } | null>(null);
-
   const isAlive = formData.personalDetails.isDeceased !== 'Yes';
   const maxStep = isAlive ? 5 : 3; // Skip contact and employment if deceased
-
-  // Initialize form data and edit mode on component mount
-  useEffect(() => {
-    try {
-      const storedHeadUuid = localStorage.getItem('familyHeadUuid');
-      const storedFormData = localStorage.getItem('familyFormData');
-
-      if (storedHeadUuid && storedFormData) {
-        const parsedFormData = JSON.parse(storedFormData);
-        setFormData(parsedFormData);
-        setSelectedHeadUuid(storedHeadUuid);
-
-        // Set edit mode and store original data
-        setIsEditMode(true);
-        setOriginalHeadData({
-          headOfFamily: parsedFormData.familyDetails.headOfFamily,
-          branch: parsedFormData.familyDetails.branch,
-          headUuid: storedHeadUuid,
-        });
-
-        console.log('Restored form data from storage - Edit Mode enabled');
-      }
-    } catch (e) {
-      console.log('localStorage not available or error parsing data:', e);
-    }
-  }, []);
-
-  // Save form data to storage whenever it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('familyFormData', JSON.stringify(formData));
-    } catch (e) {
-      console.log('localStorage not available:', e);
-    }
-  }, [formData]);
 
   const updateFormData = (step: keyof FormData, data: any) => {
     setFormData(prev => ({
@@ -138,27 +95,6 @@ export const FamilyOnboardingForm = () => {
   // New function to handle head selection from FamilyDetailsStep
   const handleHeadSelection = (headUuid: string | null) => {
     setSelectedHeadUuid(headUuid);
-
-    // If user selects a different existing head, switch to edit mode
-    if (headUuid && headUuid !== originalHeadData?.headUuid) {
-      setIsEditMode(true);
-      setOriginalHeadData({
-        headOfFamily: formData.familyDetails.headOfFamily,
-        branch: formData.familyDetails.branch,
-        headUuid: headUuid,
-      });
-    }
-
-    // If user clears selection, determine mode based on original data
-    if (!headUuid) {
-      if (originalHeadData?.headUuid) {
-        // We had an original head, so this is still edit mode (user is changing to new head)
-        setIsEditMode(true);
-      } else {
-        // No original head, so this is create mode
-        setIsEditMode(false);
-      }
-    }
   };
 
   const validateFamilyDetails = () => {
@@ -174,17 +110,6 @@ export const FamilyOnboardingForm = () => {
     return true;
   };
 
-  // Check if family details have been modified
-  const hasModifiedFamilyDetails = () => {
-    if (!originalHeadData) return false;
-
-    const current = formData.familyDetails;
-    return (
-      current.headOfFamily !== originalHeadData.headOfFamily ||
-      current.branch !== originalHeadData.branch
-    );
-  };
-
   const nextStep = async () => {
     if (currentStep === 1) {
       // Validate family details before proceeding
@@ -194,127 +119,81 @@ export const FamilyOnboardingForm = () => {
 
       console.log('=== DEBUG: nextStep called ===');
       console.log('selectedHeadUuid:', selectedHeadUuid);
-      console.log('isEditMode:', isEditMode);
-      console.log('hasModifiedFamilyDetails:', hasModifiedFamilyDetails());
-      console.log('originalHeadData:', originalHeadData);
-      console.log('formData.familyDetails:', formData.familyDetails);
+      console.log('formData.familyDetails.headOfFamily:', formData.familyDetails.headOfFamily);
+      console.log('formData.familyDetails.branch:', formData.familyDetails.branch);
 
       setIsSubmitting(true);
-
+      
       try {
         let headUuid: string;
 
-        // Determine the operation type
-        if (selectedHeadUuid && !hasModifiedFamilyDetails()) {
-          // Existing head selected with no changes - just proceed
-          console.log('No changes to existing head, proceeding...');
+        // Check if an existing head was selected
+        if (selectedHeadUuid) {
+          // Existing head selected - just store UUID and move to next step
+          console.log('Using existing head with UUID:', selectedHeadUuid);
           headUuid = selectedHeadUuid;
-        } else if (selectedHeadUuid && hasModifiedFamilyDetails()) {
-          // Existing head but user made changes - use PATCH
-          console.log('Updating existing head with PATCH');
-
-          const payload = {
-            branch: parseInt(formData.familyDetails.branch),
-            head_name: formData.familyDetails.headOfFamily.trim(),
-          };
-
-          console.log('PATCH payload:', payload);
-          console.log(
-            'PATCH URL:',
-            `${API_URL.HEAD_MEMBER.EDIT_HEAD_MEMBER}${selectedHeadUuid}/`
-          );
-
-          const response = await axiosInstance.patch(
-            `${API_URL.HEAD_MEMBER.EDIT_HEAD_MEMBER}${selectedHeadUuid}/`,
-            payload
-          );
-
-          console.log('Head updated successfully:', response.data);
-          headUuid = selectedHeadUuid;
-
-          // Update original data after successful edit
-          setOriginalHeadData({
-            headOfFamily: formData.familyDetails.headOfFamily,
-            branch: formData.familyDetails.branch,
-            headUuid: selectedHeadUuid,
-          });
-        } else if (!selectedHeadUuid && isEditMode && originalHeadData) {
-          // User was editing but changed to create new head
-          console.log('User switched from editing to creating new head');
-
-          const payload = {
-            branch: parseInt(formData.familyDetails.branch),
-            head_name: formData.familyDetails.headOfFamily.trim(),
-          };
-
-          console.log('Creating new head with payload:', payload);
-
-          const response = await axiosInstance.post(
-            API_URL.HEAD_MEMBER.POST_HEAD_MEMBER,
-            payload
-          );
-          console.log('New head created successfully:', response.data);
-
-          headUuid = response.data.uuid;
-          setSelectedHeadUuid(headUuid);
-
-          // Reset edit mode since we created a new head
-          setIsEditMode(false);
-          setOriginalHeadData(null);
+          
+          // Store in localStorage (Note: won't work in artifacts environment)
+          try {
+            localStorage.setItem('familyHeadUuid', headUuid);
+            console.log('Stored existing head UUID in localStorage:', headUuid);
+          } catch (e) {
+            console.log('localStorage not available (artifacts environment):', e);
+          }
+          
+          alert('Existing family head selected successfully!');
+          
         } else {
-          // New head creation (normal flow)
-          console.log('Creating new head with POST');
-
+          // New head - make API call to create it
           const payload = {
             branch: parseInt(formData.familyDetails.branch),
             head_name: formData.familyDetails.headOfFamily.trim(),
           };
-
+          
           console.log('Creating new head with payload:', payload);
-          console.log('POST URL:', API_URL.HEAD_MEMBER.POST_HEAD_MEMBER);
+          console.log('API URL:', API_URL.HEAD_MEMBER.POST_HEAD_MEMBER);
 
-          const response = await axiosInstance.post(
-            API_URL.HEAD_MEMBER.POST_HEAD_MEMBER,
-            payload
-          );
+          const response = await axiosInstance.post(API_URL.HEAD_MEMBER.POST_HEAD_MEMBER, payload);
+          
           console.log('New head created successfully:', response.data);
-
+          
+          // Extract UUID from response
           headUuid = response.data.uuid;
-          setSelectedHeadUuid(headUuid);
+          
+          // Store in localStorage (Note: won't work in artifacts environment)
+          try {
+            localStorage.setItem('familyHeadUuid', headUuid);
+            console.log('Stored new head UUID in localStorage:', headUuid);
+          } catch (e) {
+            console.log('localStorage not available (artifacts environment):', e);
+          }
         }
-
-        // Store UUID in localStorage
-        try {
-          localStorage.setItem('familyHeadUuid', headUuid);
-          console.log('Stored head UUID in localStorage:', headUuid);
-        } catch (e) {
-          console.log('localStorage not available:', e);
-        }
-
+        
         alert('Family details processed successfully!');
-
+        
         // Move to next step
         setCurrentStep(currentStep + 1);
+        
       } catch (error) {
         console.error('Error processing family details:', error);
         console.error('Error response:', error.response);
-
+        
         // Handle different error scenarios
         if (error.response) {
           // Server responded with error status
           console.log('Response data:', error.response.data);
           console.log('Response status:', error.response.status);
           console.log('Response headers:', error.response.headers);
-
+          
           let errorMessage = '';
-
+          
           // Handle Django validation errors
           if (error.response.data && typeof error.response.data === 'object') {
             const errorData = error.response.data;
-
+            
             // Log the full error data for debugging
             console.log('Full error data:', JSON.stringify(errorData, null, 2));
-
+            
             // Check for field-specific validation errors
             if (errorData.head_name && Array.isArray(errorData.head_name)) {
               errorMessage = errorData.head_name.join(', ');
@@ -335,32 +214,25 @@ export const FamilyOnboardingForm = () => {
               errorMessage = errors || JSON.stringify(errorData);
             }
           } else {
-            errorMessage =
-              error.response.data?.message ||
-              error.response.data?.error ||
-              `Server error: ${error.response.status}`;
+            errorMessage = error.response.data?.message || 
+                          error.response.data?.error || 
+                          `Server error: ${error.response.status}`;
           }
-
+          
           // Special handling for duplicate head name error
-          if (
-            errorMessage.includes('already exists') ||
-            errorMessage.includes('duplicate')
-          ) {
-            errorMessage +=
-              '\n\nSuggestions:\n1. Try a different name\n2. Or search and select the existing head from the dropdown';
+          if (errorMessage.includes('already exists') || errorMessage.includes('duplicate')) {
+            errorMessage += '\n\nSuggestions:\n1. Try a different name\n2. Or search and select the existing head from the dropdown';
           }
-
+          
           alert(`Failed to process family details: ${errorMessage}`);
         } else if (error.request) {
           // Request was made but no response received
-          alert(
-            'Network error: Unable to connect to server. Please check your connection.'
-          );
+          alert('Network error: Unable to connect to server. Please check your connection.');
         } else {
           // Something else happened
           alert('An unexpected error occurred. Please try again.');
         }
-
+        
         return; // Don't proceed to next step if there's an error
       } finally {
         setIsSubmitting(false);
@@ -393,7 +265,6 @@ export const FamilyOnboardingForm = () => {
 
   const handleSubmit = () => {
     console.log('Form submitted:', formData);
-    console.log('Final head UUID:', selectedHeadUuid);
     // Handle form submission
   };
 
@@ -454,16 +325,9 @@ export const FamilyOnboardingForm = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-center mb-2">
             Family Member Registration
-            {isEditMode && (
-              <span className="text-lg font-normal text-blue-600 block">
-                (Editing Mode)
-              </span>
-            )}
           </h1>
           <p className="text-muted-foreground text-center">
-            {isEditMode
-              ? 'Edit existing family member details'
-              : 'Add a new member to the family tree'}
+            Add a new member to the family tree
           </p>
         </div>
 
