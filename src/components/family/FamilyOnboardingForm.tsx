@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -10,6 +10,8 @@ import { ContactInfoStep } from './steps/ContactInfoStep';
 import { EmploymentStep } from './steps/EmploymentStep';
 import { PreviewStep } from './steps/PreviewStep';
 import { FormData } from './types';
+import axiosInstance from '../apiconfig/axios';
+import { API_URL } from '../apiconfig/api_url';
 
 const STEPS = [
   {
@@ -30,16 +32,6 @@ const STEPS = [
   { id: 4, title: 'Employment', description: 'Work and career details' },
   { id: 5, title: 'Preview', description: 'Review and submit' },
 ];
-
-type HeadValidationResult = {
-  uuid: string;
-  head_name: string;
-  branch: number;
-  branch_name: string;
-  created_at: string;
-  updated_at: string;
-  isNew?: boolean;
-};
 
 const getInitialFormData = (): FormData => {
   return {
@@ -87,40 +79,54 @@ const getInitialFormData = (): FormData => {
 export const FamilyOnboardingForm = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(getInitialFormData);
-  const [headData, setHeadData] = useState<HeadValidationResult | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null); // Track selected head UUID
 
-  // Use a ref to store the validation function
-  const validateHeadFunctionRef = useRef<
-    (() => Promise<HeadValidationResult>) | null
-  >(null);
+  // Track if we're editing an existing head (determines POST vs PATCH)
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [originalHeadData, setOriginalHeadData] = useState<{
+    headOfFamily: string;
+    branch: string;
+    headUuid: string;
+  } | null>(null);
 
   const isAlive = formData.personalDetails.isDeceased !== 'Yes';
   const maxStep = isAlive ? 5 : 3; // Skip contact and employment if deceased
 
-  // Load saved data from localStorage on component mount
+  // Initialize form data and edit mode on component mount
   useEffect(() => {
-    const savedFormData = localStorage.getItem('familyOnboardingForm');
-    const savedHeadData = localStorage.getItem('pendingHeadData');
+    try {
+      const storedHeadUuid = localStorage.getItem('familyHeadUuid');
+      const storedFormData = localStorage.getItem('familyFormData');
 
-    if (savedFormData) {
-      try {
-        const parsedFormData = JSON.parse(savedFormData);
+      if (storedHeadUuid && storedFormData) {
+        const parsedFormData = JSON.parse(storedFormData);
         setFormData(parsedFormData);
-      } catch (error) {
-        console.error('Error loading saved form data:', error);
-      }
-    }
+        setSelectedHeadUuid(storedHeadUuid);
 
-    if (savedHeadData) {
-      try {
-        const parsedHeadData = JSON.parse(savedHeadData);
-        setHeadData(parsedHeadData);
-      } catch (error) {
-        console.error('Error loading saved head data:', error);
+        // Set edit mode and store original data
+        setIsEditMode(true);
+        setOriginalHeadData({
+          headOfFamily: parsedFormData.familyDetails.headOfFamily,
+          branch: parsedFormData.familyDetails.branch,
+          headUuid: storedHeadUuid,
+        });
+
+        console.log('Restored form data from storage - Edit Mode enabled');
       }
+    } catch (e) {
+      console.log('localStorage not available or error parsing data:', e);
     }
   }, []);
+
+  // Save form data to storage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('familyFormData', JSON.stringify(formData));
+    } catch (e) {
+      console.log('localStorage not available:', e);
+    }
+  }, [formData]);
 
   const updateFormData = (step: keyof FormData, data: any) => {
     setFormData(prev => ({
@@ -129,50 +135,243 @@ export const FamilyOnboardingForm = () => {
     }));
   };
 
-  // Function to set the validation function
-  const setValidateHeadFunction = (
-    fn: (() => Promise<HeadValidationResult>) | null
-  ) => {
-    validateHeadFunctionRef.current = fn;
-  };
+  // New function to handle head selection from FamilyDetailsStep
+  const handleHeadSelection = (headUuid: string | null) => {
+    setSelectedHeadUuid(headUuid);
 
-  const handleNextStep = async () => {
-    // If we're on step 1 (Family Details), validate and create/get head
-    if (currentStep === 1) {
-      // Check if required fields are filled before attempting validation
-      if (
-        !formData.familyDetails.headOfFamily?.trim() ||
-        !formData.familyDetails.branch
-      ) {
-        alert('Please fill in both branch and head of family name');
-        return;
-      }
-
-      if (!validateHeadFunctionRef.current) {
-        console.error('Validation function not available');
-        alert('Please wait for the form to load completely');
-        return;
-      }
-
-      setIsProcessing(true);
-      try {
-        const headResult = await validateHeadFunctionRef.current();
-        setHeadData(headResult);
-        console.log('Head data:', headResult);
-      } catch (error) {
-        console.error('Error validating head:', error);
-        alert('Error validating head of family. Please try again.');
-        setIsProcessing(false);
-        return; // Don't proceed to next step if validation fails
-      }
-      setIsProcessing(false);
+    // If user selects a different existing head, switch to edit mode
+    if (headUuid && headUuid !== originalHeadData?.headUuid) {
+      setIsEditMode(true);
+      setOriginalHeadData({
+        headOfFamily: formData.familyDetails.headOfFamily,
+        branch: formData.familyDetails.branch,
+        headUuid: headUuid,
+      });
     }
 
-    // Proceed to next step
-    if (currentStep === 2 && !isAlive) {
-      setCurrentStep(5); // Skip to preview if deceased
-    } else if (currentStep < maxStep) {
-      setCurrentStep(currentStep + 1);
+    // If user clears selection, determine mode based on original data
+    if (!headUuid) {
+      if (originalHeadData?.headUuid) {
+        // We had an original head, so this is still edit mode (user is changing to new head)
+        setIsEditMode(true);
+      } else {
+        // No original head, so this is create mode
+        setIsEditMode(false);
+      }
+    }
+  };
+
+  const validateFamilyDetails = () => {
+    const { headOfFamily, branch } = formData.familyDetails;
+    if (!headOfFamily.trim()) {
+      alert('Please enter head of family name');
+      return false;
+    }
+    if (!branch) {
+      alert('Please select a branch');
+      return false;
+    }
+    return true;
+  };
+
+  // Check if family details have been modified
+  const hasModifiedFamilyDetails = () => {
+    if (!originalHeadData) return false;
+
+    const current = formData.familyDetails;
+    return (
+      current.headOfFamily !== originalHeadData.headOfFamily ||
+      current.branch !== originalHeadData.branch
+    );
+  };
+
+  const nextStep = async () => {
+    if (currentStep === 1) {
+      // Validate family details before proceeding
+      if (!validateFamilyDetails()) {
+        return;
+      }
+
+      console.log('=== DEBUG: nextStep called ===');
+      console.log('selectedHeadUuid:', selectedHeadUuid);
+      console.log('isEditMode:', isEditMode);
+      console.log('hasModifiedFamilyDetails:', hasModifiedFamilyDetails());
+      console.log('originalHeadData:', originalHeadData);
+      console.log('formData.familyDetails:', formData.familyDetails);
+
+      setIsSubmitting(true);
+
+      try {
+        let headUuid: string;
+
+        // Determine the operation type
+        if (selectedHeadUuid && !hasModifiedFamilyDetails()) {
+          // Existing head selected with no changes - just proceed
+          console.log('No changes to existing head, proceeding...');
+          headUuid = selectedHeadUuid;
+        } else if (selectedHeadUuid && hasModifiedFamilyDetails()) {
+          // Existing head but user made changes - use PATCH
+          console.log('Updating existing head with PATCH');
+
+          const payload = {
+            branch: parseInt(formData.familyDetails.branch),
+            head_name: formData.familyDetails.headOfFamily.trim(),
+          };
+
+          console.log('PATCH payload:', payload);
+          console.log(
+            'PATCH URL:',
+            `${API_URL.HEAD_MEMBER.EDIT_HEAD_MEMBER}${selectedHeadUuid}/`
+          );
+
+          const response = await axiosInstance.patch(
+            `${API_URL.HEAD_MEMBER.EDIT_HEAD_MEMBER}${selectedHeadUuid}/`,
+            payload
+          );
+
+          console.log('Head updated successfully:', response.data);
+          headUuid = selectedHeadUuid;
+
+          // Update original data after successful edit
+          setOriginalHeadData({
+            headOfFamily: formData.familyDetails.headOfFamily,
+            branch: formData.familyDetails.branch,
+            headUuid: selectedHeadUuid,
+          });
+        } else if (!selectedHeadUuid && isEditMode && originalHeadData) {
+          // User was editing but changed to create new head
+          console.log('User switched from editing to creating new head');
+
+          const payload = {
+            branch: parseInt(formData.familyDetails.branch),
+            head_name: formData.familyDetails.headOfFamily.trim(),
+          };
+
+          console.log('Creating new head with payload:', payload);
+
+          const response = await axiosInstance.post(
+            API_URL.HEAD_MEMBER.POST_HEAD_MEMBER,
+            payload
+          );
+          console.log('New head created successfully:', response.data);
+
+          headUuid = response.data.uuid;
+          setSelectedHeadUuid(headUuid);
+
+          // Reset edit mode since we created a new head
+          setIsEditMode(false);
+          setOriginalHeadData(null);
+        } else {
+          // New head creation (normal flow)
+          console.log('Creating new head with POST');
+
+          const payload = {
+            branch: parseInt(formData.familyDetails.branch),
+            head_name: formData.familyDetails.headOfFamily.trim(),
+          };
+
+          console.log('Creating new head with payload:', payload);
+          console.log('POST URL:', API_URL.HEAD_MEMBER.POST_HEAD_MEMBER);
+
+          const response = await axiosInstance.post(
+            API_URL.HEAD_MEMBER.POST_HEAD_MEMBER,
+            payload
+          );
+          console.log('New head created successfully:', response.data);
+
+          headUuid = response.data.uuid;
+          setSelectedHeadUuid(headUuid);
+        }
+
+        // Store UUID in localStorage
+        try {
+          localStorage.setItem('familyHeadUuid', headUuid);
+          console.log('Stored head UUID in localStorage:', headUuid);
+        } catch (e) {
+          console.log('localStorage not available:', e);
+        }
+
+        alert('Family details processed successfully!');
+
+        // Move to next step
+        setCurrentStep(currentStep + 1);
+      } catch (error) {
+        console.error('Error processing family details:', error);
+        console.error('Error response:', error.response);
+
+        // Handle different error scenarios
+        if (error.response) {
+          // Server responded with error status
+          console.log('Response data:', error.response.data);
+          console.log('Response status:', error.response.status);
+          console.log('Response headers:', error.response.headers);
+
+          let errorMessage = '';
+
+          // Handle Django validation errors
+          if (error.response.data && typeof error.response.data === 'object') {
+            const errorData = error.response.data;
+
+            // Log the full error data for debugging
+            console.log('Full error data:', JSON.stringify(errorData, null, 2));
+
+            // Check for field-specific validation errors
+            if (errorData.head_name && Array.isArray(errorData.head_name)) {
+              errorMessage = errorData.head_name.join(', ');
+            } else if (errorData.branch && Array.isArray(errorData.branch)) {
+              errorMessage = errorData.branch.join(', ');
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            } else if (errorData.detail) {
+              errorMessage = errorData.detail;
+            } else {
+              // Extract all error messages
+              const errors = Object.values(errorData)
+                .flat()
+                .filter(msg => typeof msg === 'string')
+                .join(', ');
+              errorMessage = errors || JSON.stringify(errorData);
+            }
+          } else {
+            errorMessage =
+              error.response.data?.message ||
+              error.response.data?.error ||
+              `Server error: ${error.response.status}`;
+          }
+
+          // Special handling for duplicate head name error
+          if (
+            errorMessage.includes('already exists') ||
+            errorMessage.includes('duplicate')
+          ) {
+            errorMessage +=
+              '\n\nSuggestions:\n1. Try a different name\n2. Or search and select the existing head from the dropdown';
+          }
+
+          alert(`Failed to process family details: ${errorMessage}`);
+        } else if (error.request) {
+          // Request was made but no response received
+          alert(
+            'Network error: Unable to connect to server. Please check your connection.'
+          );
+        } else {
+          // Something else happened
+          alert('An unexpected error occurred. Please try again.');
+        }
+
+        return; // Don't proceed to next step if there's an error
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      // Handle other steps
+      if (currentStep === 2 && !isAlive) {
+        setCurrentStep(5); // Skip to preview if deceased
+      } else if (currentStep < maxStep) {
+        setCurrentStep(currentStep + 1);
+      }
     }
   };
 
@@ -194,43 +393,8 @@ export const FamilyOnboardingForm = () => {
 
   const handleSubmit = () => {
     console.log('Form submitted:', formData);
-    console.log('Head data:', headData);
-
-    try {
-      setIsProcessing(true);
-
-      // If the head is new (has isNew flag or temp UUID), create it first
-      if (headData && (headData.isNew || headData.uuid.startsWith('temp-'))) {
-        console.log('Creating new head member...');
-        // Here you would make the API call to create the head member
-        // const response = await axiosInstance.post(API_URL.HEAD_MEMBER.POST_HEAD_MEMBER, {
-        //   head_name: headData.head_name,
-        //   branch: headData.branch
-        // });
-        // Update headData with the real UUID from the response
-        // setHeadData(response.data);
-      }
-
-      // Then submit the main form data
-      console.log('Submitting member data...');
-      // Handle the main form submission here
-
-      // Clear localStorage after successful submission
-      localStorage.removeItem('familyOnboardingForm');
-      localStorage.removeItem('pendingHeadData');
-
-      alert('Registration submitted successfully!');
-
-      // Reset form
-      setFormData(getInitialFormData());
-      setHeadData(null);
-      setCurrentStep(1);
-    } catch (error) {
-      console.error('Error submitting form:', error);
-      alert('Error submitting registration. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
+    console.log('Final head UUID:', selectedHeadUuid);
+    // Handle form submission
   };
 
   const getProgressPercentage = () => {
@@ -247,7 +411,7 @@ export const FamilyOnboardingForm = () => {
           <FamilyDetailsStep
             data={formData.familyDetails}
             onChange={data => updateFormData('familyDetails', data)}
-            onSetValidateFunction={setValidateHeadFunction}
+            onHeadSelection={handleHeadSelection}
           />
         );
       case 2:
@@ -284,24 +448,22 @@ export const FamilyOnboardingForm = () => {
     }
   };
 
-  // Function to clear all saved data
-  const clearSavedData = () => {
-    localStorage.removeItem('familyOnboardingForm');
-    localStorage.removeItem('pendingHeadData');
-    setFormData(getInitialFormData());
-    setHeadData(null);
-    setCurrentStep(1);
-  };
-
   return (
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-center mb-2">
             Family Member Registration
+            {isEditMode && (
+              <span className="text-lg font-normal text-blue-600 block">
+                (Editing Mode)
+              </span>
+            )}
           </h1>
           <p className="text-muted-foreground text-center">
-            Add a new member to the family tree
+            {isEditMode
+              ? 'Edit existing family member details'
+              : 'Add a new member to the family tree'}
           </p>
         </div>
 
@@ -314,12 +476,6 @@ export const FamilyOnboardingForm = () => {
               <span className="text-sm text-muted-foreground">
                 {Math.round(getProgressPercentage())}% Complete
               </span>
-              {headData && (
-                <span className="text-xs text-green-600">
-                  Head: {headData.head_name} ({headData.branch_name})
-                  {headData.isNew && ' - New'}
-                </span>
-              )}
             </div>
             <Progress value={getProgressPercentage()} className="h-2" />
           </CardHeader>
@@ -340,7 +496,7 @@ export const FamilyOnboardingForm = () => {
           <Button
             variant="outline"
             onClick={prevStep}
-            disabled={currentStep === 1 || isProcessing}
+            disabled={currentStep === 1 || isSubmitting}
             className="flex items-center gap-2"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -350,7 +506,7 @@ export const FamilyOnboardingForm = () => {
           {currentStep === maxStep ? (
             <Button
               onClick={handleSubmit}
-              disabled={isProcessing}
+              disabled={isSubmitting}
               className="bg-family-primary hover:bg-family-primary/90 text-family-primary-foreground flex items-center gap-2"
             >
               <Check className="h-4 w-4" />
@@ -358,12 +514,21 @@ export const FamilyOnboardingForm = () => {
             </Button>
           ) : (
             <Button
-              onClick={handleNextStep}
-              disabled={isProcessing}
+              onClick={nextStep}
+              disabled={isSubmitting}
               className="bg-family-primary hover:bg-family-primary/90 text-family-primary-foreground flex items-center gap-2"
             >
-              {isProcessing ? 'Processing...' : 'Next'}
-              <ChevronRight className="h-4 w-4" />
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </>
+              )}
             </Button>
           )}
         </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import {
@@ -18,31 +18,18 @@ import {
 import { Check, Users } from 'lucide-react';
 import { FamilyDetails, StepProps } from '../types';
 import { cn } from '@/lib/utils';
-
-import { API_URL } from '@/components/apiconfig/api_url';
 import axiosInstance from '@/components/apiconfig/axios';
-
-type HeadValidationResult = {
-  uuid: string;
-  head_name: string;
-  branch: number;
-  branch_name: string;
-  created_at: string;
-  updated_at: string;
-  isNew?: boolean;
-};
+import { API_URL } from '@/components/apiconfig/api_url';
 
 interface FamilyDetailsStepProps extends StepProps {
   data: FamilyDetails;
-  onSetValidateFunction: (
-    fn: (() => Promise<HeadValidationResult>) | null
-  ) => void;
+  onHeadSelection?: (headUuid: string | null) => void; // New prop for head selection
 }
 
 export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   data,
   onChange,
-  onSetValidateFunction,
+  onHeadSelection,
 }) => {
   const [headOfFamilyOpen, setHeadOfFamilyOpen] = useState(false);
   const [headOfFamilyInput, setHeadOfFamilyInput] = useState(
@@ -53,6 +40,24 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   const [heads, setHeads] = useState<{ uuid: string; head_name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null);
+
+  // Initialize form data from props on component mount
+  useEffect(() => {
+    if (data.headOfFamily) {
+      setHeadOfFamilyInput(data.headOfFamily);
+
+      // Try to restore selectedHeadUuid from storage or context
+      try {
+        const storedHeadUuid = localStorage.getItem('familyHeadUuid');
+        if (storedHeadUuid) {
+          setSelectedHeadUuid(storedHeadUuid);
+          onHeadSelection?.(storedHeadUuid);
+        }
+      } catch (e) {
+        console.log('localStorage not available');
+      }
+    }
+  }, [data.headOfFamily]);
 
   useEffect(() => {
     const fetchBranches = async () => {
@@ -66,180 +71,118 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
     fetchBranches();
   }, []);
 
-  // Load saved head data from localStorage on component mount
-  useEffect(() => {
-    const savedHeadData = localStorage.getItem('pendingHeadData');
-    if (savedHeadData) {
-      try {
-        const parsedData: HeadValidationResult = JSON.parse(savedHeadData);
-        // If the saved data matches current form data, restore the selection
-        if (
-          parsedData.head_name === data.headOfFamily &&
-          parsedData.branch.toString() === data.branch
-        ) {
-          setSelectedHeadUuid(parsedData.uuid);
-        }
-      } catch (error) {
-        console.error('Error parsing saved head data:', error);
-      }
-    }
-  }, [data.headOfFamily, data.branch]);
+  const handleInputChange = (field: keyof FamilyDetails, value: string) => {
+    onChange({ [field]: value });
+  };
 
-  // 🔍 Fetch heads on input change
-  useEffect(() => {
-    if (!headOfFamilyInput.trim() || !data.branch) {
+  const handleHeadOfFamilySelect = (
+    head: { uuid: string; head_name: string } | string
+  ) => {
+    if (typeof head === 'string') {
+      // "Create new head" - user typed a new name
+
+      // Check if this name exists in the current search results
+      const existingHead = heads.find(
+        h => h.head_name.toLowerCase() === head.toLowerCase()
+      );
+      if (existingHead) {
+        // If the name exists in search results, select the existing one instead
+        setHeadOfFamilyInput(existingHead.head_name);
+        handleInputChange('headOfFamily', existingHead.head_name);
+        setSelectedHeadUuid(existingHead.uuid);
+        onHeadSelection?.(existingHead.uuid);
+        console.log(
+          'Found existing head, selecting instead of creating new -',
+          existingHead.head_name,
+          'UUID:',
+          existingHead.uuid
+        );
+        alert(
+          `Head "${existingHead.head_name}" already exists. Selected the existing one.`
+        );
+      } else {
+        // Proceed with creating new head
+        setHeadOfFamilyInput(head);
+        handleInputChange('headOfFamily', head);
+        setSelectedHeadUuid(null);
+        onHeadSelection?.(null);
+        console.log('Selected: New head -', head);
+      }
+    } else {
+      // Existing head selected
+      setHeadOfFamilyInput(head.head_name);
+      handleInputChange('headOfFamily', head.head_name);
+      setSelectedHeadUuid(head.uuid);
+      console.log('=== DEBUG: Existing head selected ===');
+      console.log('Head name:', head.head_name);
+      console.log('Head UUID:', head.uuid);
+      console.log('About to call onHeadSelection with UUID:', head.uuid);
+      onHeadSelection?.(head.uuid);
+      console.log('onHeadSelection called');
+    }
+    setHeadOfFamilyOpen(false);
+  };
+
+  // 🔍 Search API call when input changes
+  const handleHeadOfFamilyInputChange = async (value: string) => {
+    setHeadOfFamilyInput(value);
+    handleInputChange('headOfFamily', value);
+
+    if (value !== data.headOfFamily) {
+      setSelectedHeadUuid(null);
+      onHeadSelection?.(null);
+    }
+
+    // 🛑 If no branch selected, don't search
+    if (!data.branch) {
       setHeads([]);
       setHeadOfFamilyOpen(false);
       return;
     }
 
-    const fetchHeads = async () => {
+    if (value.length > 0) {
+      setHeadOfFamilyOpen(true);
       setLoading(true);
       try {
-        // Add debugging
-        console.log('Fetching heads with params:', {
-          branch_id: data.branch,
-          search: headOfFamilyInput.trim(),
-        });
-
         const res = await axiosInstance.get(
           API_URL.HEAD_MEMBER.SEARCH_HEAD_MEMBER,
           {
             params: {
               branch_id: data.branch,
-              search: headOfFamilyInput.trim(),
+              search: value.trim(),
             },
           }
         );
-
-        console.log('API Response:', res.data);
         setHeads(res.data || []);
-        setHeadOfFamilyOpen(true); // Always show dropdown when search is performed
       } catch (error) {
         console.error('Error fetching heads:', error);
-        console.error('Error details:', error.response?.data);
-        setHeads([]);
-        setHeadOfFamilyOpen(true); // Show dropdown even on error to display "No result found"
       } finally {
         setLoading(false);
       }
-    };
-
-    const debounce = setTimeout(fetchHeads, 200); // debounce API calls
-    return () => clearTimeout(debounce);
-  }, [headOfFamilyInput, data.branch]);
-
-  const handleInputChange = (field: keyof FamilyDetails, value: string) => {
-    onChange({ [field]: value });
-  };
-
-  const handleBranchChange = (value: string) => {
-    handleInputChange('branch', value);
-    // Clear head of family when branch changes
-    setHeadOfFamilyInput('');
-    handleInputChange('headOfFamily', '');
-    setSelectedHeadUuid(null);
-    setHeads([]);
-    setHeadOfFamilyOpen(false);
-    // Clear any saved head data when branch changes
-    localStorage.removeItem('pendingHeadData');
-  };
-
-  const handleHeadOfFamilySelect = (value: string) => {
-    setHeadOfFamilyInput(value);
-    handleInputChange('headOfFamily', value);
-
-    // Find the selected head's UUID
-    const selectedHead = heads.find(head => head.head_name === value);
-    setSelectedHeadUuid(selectedHead?.uuid || null);
-
-    setHeadOfFamilyOpen(false);
-  };
-
-  const handleHeadOfFamilyInputChange = (value: string) => {
-    setHeadOfFamilyInput(value);
-    handleInputChange('headOfFamily', value);
-
-    // If user types something different, it's potentially a new head
-    const existingHead = heads.find(head => head.head_name === value);
-    setSelectedHeadUuid(existingHead?.uuid || null);
-  };
-
-  // Generate a temporary UUID for new heads
-  const generateTempUuid = () => {
-    return 'temp-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now();
-  };
-
-  // Create validation function using useCallback to ensure stable reference
-  const validationFunction =
-    useCallback(async (): Promise<HeadValidationResult> => {
-      console.log('Validation called with:', {
-        headOfFamily: data.headOfFamily,
-        branch: data.branch,
-        selectedHeadUuid,
-      });
-
-      if (!data.headOfFamily?.trim() || !data.branch) {
-        throw new Error('Head of family name and branch are required');
-      }
-
-      // If we have a selected UUID, return existing head data
-      if (selectedHeadUuid && !selectedHeadUuid.startsWith('temp-')) {
-        const existingHead = heads.find(head => head.uuid === selectedHeadUuid);
-        if (existingHead) {
-          const headResult: HeadValidationResult = {
-            uuid: existingHead.uuid,
-            head_name: existingHead.head_name,
-            branch: parseInt(data.branch),
-            branch_name:
-              branches.find(b => b.id.toString() === data.branch)?.name || '',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          // Save to localStorage
-          localStorage.setItem('pendingHeadData', JSON.stringify(headResult));
-          return headResult;
-        }
-      }
-
-      // For new heads, create a temporary entry and save to localStorage
-      const newHeadResult: HeadValidationResult = {
-        uuid: generateTempUuid(),
-        head_name: data.headOfFamily.trim(),
-        branch: parseInt(data.branch),
-        branch_name:
-          branches.find(b => b.id.toString() === data.branch)?.name || '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        isNew: true, // Add a flag to indicate this is a new head
-      } as HeadValidationResult & { isNew: boolean };
-
-      // Save to localStorage
-      localStorage.setItem('pendingHeadData', JSON.stringify(newHeadResult));
-
-      console.log('New head data saved to localStorage:', newHeadResult);
-      return newHeadResult;
-    }, [data.headOfFamily, data.branch, selectedHeadUuid, heads, branches]);
-
-  // Set the validation function in the parent component
-  useEffect(() => {
-    // Only set the validation function if we have the required data
-    if (data.headOfFamily?.trim() && data.branch) {
-      onSetValidateFunction(validationFunction);
     } else {
-      onSetValidateFunction(null);
+      setHeads([]);
+      setHeadOfFamilyOpen(false);
+    }
+  };
+
+  // 🔄 Reset heads when branch changes
+  useEffect(() => {
+    if (data.branch && data.headOfFamily) {
+      // If we have existing data, don't reset it
+      return;
     }
 
-    // Cleanup function to clear the validation function when component unmounts
-    return () => onSetValidateFunction(null);
-  }, [
-    validationFunction,
-    onSetValidateFunction,
-    data.headOfFamily,
-    data.branch,
-  ]);
+    // Only reset if we don't have existing data
+    if (!data.headOfFamily) {
+      setHeadOfFamilyInput('');
+      setHeads([]);
+      setSelectedHeadUuid(null);
+      onHeadSelection?.(null);
+    }
+  }, [data.branch]);
 
-  useEffect(() => {
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
       if (!target.closest('[data-combobox]')) {
@@ -263,7 +206,10 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Branch *</Label>
-            <Select value={data.branch} onValueChange={handleBranchChange}>
+            <Select
+              value={data.branch}
+              onValueChange={value => handleInputChange('branch', value)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select branch" />
               </SelectTrigger>
@@ -280,50 +226,77 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
             <Label>Head of Family *</Label>
             <div className="relative" data-combobox>
               <Input
-                placeholder="Enter or search head of family name"
+                placeholder={
+                  data.branch
+                    ? 'Enter or search head of family'
+                    : 'Select a branch first'
+                }
                 value={headOfFamilyInput}
                 onChange={e => handleHeadOfFamilyInputChange(e.target.value)}
-                onFocus={() => {
-                  if (headOfFamilyInput.trim()) {
-                    setHeadOfFamilyOpen(true);
-                  }
-                }}
+                onFocus={() =>
+                  setHeadOfFamilyOpen(headOfFamilyInput.length > 0)
+                }
                 disabled={!data.branch}
+                className={
+                  selectedHeadUuid ? 'border-green-500 bg-green-50' : ''
+                }
               />
+              {selectedHeadUuid && (
+                <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                  <Check className="h-4 w-4 text-green-600" />
+                </div>
+              )}
               {headOfFamilyOpen && (
                 <div className="absolute top-full left-0 right-0 z-50 mt-1">
                   <div className="rounded-md border border-input bg-popover shadow-lg">
                     <Command>
-                      <CommandList className="max-h-40">
+                      <CommandList className="max-h-40 overflow-y-auto">
                         <CommandGroup>
                           {loading ? (
-                            <CommandItem disabled>Searching...</CommandItem>
+                            <div className="px-3 py-2 text-sm text-muted-foreground">
+                              Searching...
+                            </div>
                           ) : heads.length > 0 ? (
                             heads.map(head => (
                               <CommandItem
                                 key={head.uuid}
                                 value={head.head_name}
-                                onSelect={() =>
-                                  handleHeadOfFamilySelect(head.head_name)
-                                }
+                                onSelect={() => handleHeadOfFamilySelect(head)}
                                 className="cursor-pointer"
                               >
                                 <Check
                                   className={cn(
                                     'mr-2 h-4 w-4',
-                                    headOfFamilyInput === head.head_name
+                                    selectedHeadUuid === head.uuid
                                       ? 'opacity-100'
                                       : 'opacity-0'
                                   )}
                                 />
                                 {head.head_name}
+                                <span className="ml-auto text-xs text-muted-foreground">
+                                  Existing
+                                </span>
                               </CommandItem>
                             ))
                           ) : (
-                            <CommandItem disabled>
-                              No result for: "{headOfFamilyInput.trim()}" - Will
-                              create new head
-                            </CommandItem>
+                            headOfFamilyInput.trim() && (
+                              <CommandItem
+                                value={headOfFamilyInput}
+                                onSelect={() =>
+                                  handleHeadOfFamilySelect(headOfFamilyInput)
+                                }
+                                className="cursor-pointer"
+                              >
+                                <Check className="mr-2 h-4 w-4 opacity-0" />
+                                <div className="flex flex-col">
+                                  <span>Create new: "{headOfFamilyInput}"</span>
+                                  <span className="text-xs text-orange-600">
+                                     Make sure this name doesn't exist
+                                  </span>
+                                </div>
+                                <span className="ml-auto text-xs">New</span>
+                              </CommandItem>
+                            )
                           )}
                         </CommandGroup>
                       </CommandList>
@@ -332,6 +305,14 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                 </div>
               )}
             </div>
+            {selectedHeadUuid && (
+              <p className="text-sm text-green-600">✓ Existing head selected</p>
+            )}
+            {!selectedHeadUuid && headOfFamilyInput && (
+              <p className="text-sm text-blue-600">
+                ➕ New head will be created
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
