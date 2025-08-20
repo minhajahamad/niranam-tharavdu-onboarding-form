@@ -23,7 +23,7 @@ import { API_URL } from '@/components/apiconfig/api_url';
 
 interface FamilyDetailsStepProps extends StepProps {
   data: FamilyDetails;
-  onHeadSelection?: (headUuid: string | null) => void; // New prop for head selection
+  onHeadSelection?: (headUuid: string | null) => void;
 }
 
 export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
@@ -32,14 +32,50 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   onHeadSelection,
 }) => {
   const [headOfFamilyOpen, setHeadOfFamilyOpen] = useState(false);
-  const [headOfFamilyInput, setHeadOfFamilyInput] = useState(
-    data.headOfFamily || ''
-  );
+  const [headOfFamilyInput, setHeadOfFamilyInput] = useState('');
 
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
   const [heads, setHeads] = useState<{ uuid: string; head_name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null);
+
+  // 🔧 FIX: Sync local state with props when data changes
+  useEffect(() => {
+    setHeadOfFamilyInput(data.headOfFamily || '');
+  }, [data.headOfFamily]);
+
+  // 🔧 FIX: Also sync selectedHeadUuid when coming back to this step
+  useEffect(() => {
+    // If we have head of family data but no selected UUID, 
+    // we need to determine if this is an existing head or new one
+    if (data.headOfFamily && data.branch) {
+      // Try to find if this head name exists in the current branch
+      const searchExistingHead = async () => {
+        try {
+          const res = await axiosInstance.get(
+            API_URL.HEAD_MEMBER.SEARCH_HEAD_MEMBER,
+            {
+              params: {
+                branch_id: data.branch,
+                search: data.headOfFamily.trim(),
+              },
+            }
+          );
+          const existingHead = (res.data || []).find(
+            (h: any) => h.head_name.toLowerCase() === data.headOfFamily.toLowerCase()
+          );
+          if (existingHead) {
+            setSelectedHeadUuid(existingHead.uuid);
+            onHeadSelection?.(existingHead.uuid);
+          }
+        } catch (error) {
+          console.error('Error checking existing head:', error);
+        }
+      };
+      
+      searchExistingHead();
+    }
+  }, [data.headOfFamily, data.branch]);
 
   useEffect(() => {
     const fetchBranches = async () => {
@@ -62,17 +98,26 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   ) => {
     if (typeof head === 'string') {
       // "Create new head" - user typed a new name
-      
+
       // Check if this name exists in the current search results
-      const existingHead = heads.find(h => h.head_name.toLowerCase() === head.toLowerCase());
+      const existingHead = heads.find(
+        h => h.head_name.toLowerCase() === head.toLowerCase()
+      );
       if (existingHead) {
         // If the name exists in search results, select the existing one instead
         setHeadOfFamilyInput(existingHead.head_name);
         handleInputChange('headOfFamily', existingHead.head_name);
         setSelectedHeadUuid(existingHead.uuid);
         onHeadSelection?.(existingHead.uuid);
-        console.log('Found existing head, selecting instead of creating new -', existingHead.head_name, 'UUID:', existingHead.uuid);
-        alert(`Head "${existingHead.head_name}" already exists. Selected the existing one.`);
+        console.log(
+          'Found existing head, selecting instead of creating new -',
+          existingHead.head_name,
+          'UUID:',
+          existingHead.uuid
+        );
+        alert(
+          `Head "${existingHead.head_name}" already exists. Selected the existing one.`
+        );
       } else {
         // Proceed with creating new head
         setHeadOfFamilyInput(head);
@@ -100,7 +145,7 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   const handleHeadOfFamilyInputChange = async (value: string) => {
     setHeadOfFamilyInput(value);
     handleInputChange('headOfFamily', value);
-    
+
     // Reset selection when user types manually
     setSelectedHeadUuid(null);
     onHeadSelection?.(null);
@@ -139,10 +184,15 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
 
   // 🔄 Reset heads when branch changes
   useEffect(() => {
-    setHeadOfFamilyInput('');
-    setHeads([]);
-    setSelectedHeadUuid(null);
-    onHeadSelection?.(null);
+    // Only reset if we're actually changing to a different branch
+    // and not just initializing with existing data
+    if (data.branch && headOfFamilyInput && !data.headOfFamily) {
+      setHeadOfFamilyInput('');
+      setHeads([]);
+      setSelectedHeadUuid(null);
+      onHeadSelection?.(null);
+      handleInputChange('headOfFamily', '');
+    }
   }, [data.branch]);
 
   // Close dropdown when clicking outside
@@ -201,7 +251,9 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                   setHeadOfFamilyOpen(headOfFamilyInput.length > 0)
                 }
                 disabled={!data.branch}
-                className={selectedHeadUuid ? 'border-green-500 bg-green-50' : ''}
+                className={
+                  selectedHeadUuid ? 'border-green-500 bg-green-50' : ''
+                }
               />
               {selectedHeadUuid && (
                 <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
@@ -256,9 +308,7 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                                     ⚠️ Make sure this name doesn't exist
                                   </span>
                                 </div>
-                                <span className="ml-auto text-xs">
-                                  New
-                                </span>
+                                <span className="ml-auto text-xs">New</span>
                               </CommandItem>
                             )
                           )}
@@ -270,9 +320,7 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
               )}
             </div>
             {selectedHeadUuid && (
-              <p className="text-sm text-green-600">
-                ✓ Existing head selected
-              </p>
+              <p className="text-sm text-green-600">✓ Existing head selected</p>
             )}
             {!selectedHeadUuid && headOfFamilyInput && (
               <p className="text-sm text-blue-600">
