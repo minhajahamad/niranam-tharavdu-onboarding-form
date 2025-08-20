@@ -81,13 +81,14 @@ export const FamilyOnboardingForm = () => {
   const [formData, setFormData] = useState<FormData>(getInitialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null);
-  const [createdMemberId, setCreatedMemberId] = useState<string | null>(null); // Track created member ID
+  const [createdMemberId, setCreatedMemberId] = useState<string | null>(null);
+
 
   // Create refs for step validation
   const personalDetailsValidationRef = useRef<any>();
 
   const isAlive = formData.personalDetails.isDeceased !== 'Yes';
-  const maxStep = isAlive ? 5 : 3; // Skip contact and employment if deceased
+  const maxStep = isAlive ? 5 : 3;
 
   const updateFormData = (step: keyof FormData, data: any) => {
     setFormData(prev => ({
@@ -114,7 +115,6 @@ export const FamilyOnboardingForm = () => {
   };
 
   const validatePersonalDetails = () => {
-    // Call the validation function from PersonalDetailsStep
     if (
       personalDetailsValidationRef.current &&
       typeof personalDetailsValidationRef.current === 'function'
@@ -129,14 +129,34 @@ export const FamilyOnboardingForm = () => {
     };
   };
 
+  const validateContactInfo = () => {
+    const { contactNumber, whatsappNumber } = formData.contactInfo;
+    const errors = [];
+
+    if (!contactNumber.trim()) {
+      errors.push('Contact number is required');
+    } else if (!/^\+?[\d\s-()]+$/.test(contactNumber.trim())) {
+      errors.push('Please enter a valid contact number');
+    }
+
+    if (!whatsappNumber.trim()) {
+      errors.push('WhatsApp number is required');
+    } else if (!/^\+?[\d\s-()]+$/.test(whatsappNumber.trim())) {
+      errors.push('Please enter a valid WhatsApp number');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  };
+
   const submitMemberData = async (memberFormData: FormData) => {
     try {
       console.log('=== DEBUG: Submitting Member Data ===');
       console.log('API URL:', API_URL.MEMBER.POST_MEMBER);
 
-      // Log form data contents for debugging
       console.log('FormData contents:');
-      // Log FormData without using entries() to avoid TypeScript issues
       console.log('FormData prepared successfully with all member data');
 
       const response = await axiosInstance.post(
@@ -151,12 +171,10 @@ export const FamilyOnboardingForm = () => {
 
       console.log('Member created successfully:', response.data);
 
-      // Store the created member ID (not UUID)
       const memberId = response.data.data.id;
       setCreatedMemberId(memberId);
       console.log(memberId);
 
-      // Store member_id in localStorage
       try {
         localStorage.setItem('member_id', memberId);
         console.log('Stored member ID in localStorage:', memberId);
@@ -179,7 +197,6 @@ export const FamilyOnboardingForm = () => {
           const errorData = error.response.data;
           console.log('Full error data:', JSON.stringify(errorData, null, 2));
 
-          // Handle Django validation errors
           if (errorData.name && Array.isArray(errorData.name)) {
             errorMessage = `Name: ${errorData.name.join(', ')}`;
           } else if (errorData.gender && Array.isArray(errorData.gender)) {
@@ -195,6 +212,104 @@ export const FamilyOnboardingForm = () => {
             errorMessage = `Head: ${errorData.head.join(', ')}`;
           } else if (errorData.children && Array.isArray(errorData.children)) {
             errorMessage = `Children: ${errorData.children.join(', ')}`;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          } else if (errorData.detail) {
+            errorMessage = errorData.detail;
+          } else {
+            const errors = Object.entries(errorData)
+              .map(([field, messages]) => {
+                if (Array.isArray(messages)) {
+                  return `${field}: ${messages.join(', ')}`;
+                }
+                return `${field}: ${messages}`;
+              })
+              .join('\n');
+            errorMessage = errors || JSON.stringify(errorData);
+          }
+        } else {
+          errorMessage =
+            error.response.data?.message ||
+            error.response.data?.error ||
+            `Server error: ${error.response.status}`;
+        }
+      } else if (error.request) {
+        errorMessage =
+          'Network error: Unable to connect to server. Please check your connection.';
+      } else {
+        errorMessage = 'An unexpected error occurred. Please try again.';
+      }
+
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const submitContactData = async () => {
+    try {
+      console.log('=== DEBUG: Submitting Contact Data ===');
+      
+      // Get member_id from localStorage
+      let memberId;
+      try {
+        memberId = localStorage.getItem('member_id');
+        console.log('Retrieved member ID from localStorage:', memberId);
+      } catch (e) {
+        console.log('localStorage not available (artifacts environment):', e);
+      }
+
+      if (!memberId) {
+        throw new Error('Member ID not found. Please complete previous steps first.');
+      }
+
+      // Prepare contact data payload
+      const contactPayload = {
+        member_id: parseInt(memberId), // Assuming the API expects member ID as integer
+        phone_number: formData.contactInfo.contactNumber.trim(),
+        whatsapp_number: formData.contactInfo.whatsappNumber.trim() || null,
+        email: formData.contactInfo.email.trim() || null,
+        address: formData.contactInfo.location.trim() || null,
+      };
+
+      console.log('Contact payload:', contactPayload);
+      console.log('API URL:', API_URL.CONTACT?.POST_CONTACT || 'API_URL.CONTACT.POST_CONTACT');
+
+      // Make API call (you'll need to add this to your API_URL configuration)
+      const response = await axiosInstance.post(
+        API_URL.CONTACT?.POST_CONTACT || '/api/contacts/', // Update with actual endpoint
+        contactPayload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.log('Contact created successfully:', response.data);
+
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('Error creating contact:', error);
+      console.error('Error response:', error.response);
+
+      let errorMessage = '';
+
+      if (error.response) {
+        console.log('Response data:', error.response.data);
+        console.log('Response status:', error.response.status);
+
+        if (error.response.data && typeof error.response.data === 'object') {
+          const errorData = error.response.data;
+          console.log('Full error data:', JSON.stringify(errorData, null, 2));
+
+          // Handle common validation errors
+          if (errorData.phone_number && Array.isArray(errorData.phone_number)) {
+            errorMessage = `Phone Number: ${errorData.phone_number.join(', ')}`;
+          } else if (errorData.email && Array.isArray(errorData.email)) {
+            errorMessage = `Email: ${errorData.email.join(', ')}`;
+          } else if (errorData.member && Array.isArray(errorData.member)) {
+            errorMessage = `Member: ${errorData.member.join(', ')}`;
           } else if (errorData.message) {
             errorMessage = errorData.message;
           } else if (errorData.error) {
@@ -223,7 +338,7 @@ export const FamilyOnboardingForm = () => {
         errorMessage =
           'Network error: Unable to connect to server. Please check your connection.';
       } else {
-        errorMessage = 'An unexpected error occurred. Please try again.';
+        errorMessage = error.message || 'An unexpected error occurred. Please try again.';
       }
 
       return { success: false, error: errorMessage };
@@ -232,7 +347,7 @@ export const FamilyOnboardingForm = () => {
 
   const nextStep = async () => {
     if (currentStep === 1) {
-      // Validate and handle family details step
+      // Handle family details step
       if (!validateFamilyDetails()) {
         return;
       }
@@ -334,7 +449,7 @@ export const FamilyOnboardingForm = () => {
         setIsSubmitting(false);
       }
     } else if (currentStep === 2) {
-      // Validate and submit personal details
+      // Handle personal details step
       console.log('=== DEBUG: nextStep called for Personal Details ===');
 
       const validation = validatePersonalDetails();
@@ -361,7 +476,6 @@ export const FamilyOnboardingForm = () => {
         if (result.success) {
           alert('Personal details saved successfully!');
 
-          // Move to next step based on whether person is alive
           if (isAlive) {
             setCurrentStep(currentStep + 1); // Go to contact info
           } else {
@@ -376,8 +490,40 @@ export const FamilyOnboardingForm = () => {
       } finally {
         setIsSubmitting(false);
       }
+    } else if (currentStep === 3) {
+      // Handle contact information step
+      console.log('=== DEBUG: nextStep called for Contact Information ===');
+
+      const validation = validateContactInfo();
+
+      if (!validation.isValid) {
+        console.log('Contact info validation failed:', validation.errors);
+        alert(
+          `Please fix the following errors:\n${validation.errors.join('\n')}`
+        );
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        console.log('Submitting contact information...');
+        const result = await submitContactData();
+
+        if (result.success) {
+          alert('Contact information saved successfully!');
+          setCurrentStep(currentStep + 1); // Go to employment step
+        } else {
+          alert(`Failed to save contact information: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Unexpected error during contact submission:', error);
+        alert('An unexpected error occurred while saving contact info. Please try again.');
+      } finally {
+        setIsSubmitting(false);
+      }
     } else {
-      // Handle other steps (contact info, employment)
+      // Handle other steps (employment)
       if (currentStep === 2 && !isAlive) {
         setCurrentStep(5); // Skip to preview if deceased
       } else if (currentStep < maxStep) {
@@ -404,7 +550,6 @@ export const FamilyOnboardingForm = () => {
   const handleSubmit = () => {
     console.log('Form submitted:', formData);
     console.log('Created member ID:', createdMemberId);
-    // Handle final form submission or navigation
     alert('Registration completed successfully!');
   };
 
@@ -526,7 +671,8 @@ export const FamilyOnboardingForm = () => {
               {isSubmitting ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  {currentStep === 2 ? 'Saving Member...' : 'Saving...'}
+                  {currentStep === 2 ? 'Saving Member...' : 
+                   currentStep === 3 ? 'Saving Contact...' : 'Saving...'}
                 </>
               ) : (
                 <>
