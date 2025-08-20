@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,25 +10,148 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Upload, X, Users, Heart, Camera, ImagePlus } from 'lucide-react';
 import { PersonalDetails, StepProps } from '../types';
 import { EnhancedDatePicker } from '@/components/ui/date-picker-enhanced';
-import { cn } from '@/lib/utils';
-
-
 
 const MARITAL_STATUS = ['Single', 'Married'];
 const GENDER_OPTIONS = ['Male', 'Female'];
 
 interface PersonalDetailsStepProps extends StepProps {
   data: PersonalDetails;
+  onValidate?: () => {
+    isValid: boolean;
+    errors: string[];
+    formData?: FormData;
+  };
 }
 
 export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
   data,
   onChange,
+  onValidate,
 }) => {
+  const [showValidation, setShowValidation] = useState(false);
+
+  // Validate required fields
+  const validateForm = (): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+
+    if (!data.memberName?.trim()) {
+      errors.push('Member name is required');
+    }
+
+    if (!data.gender) {
+      errors.push('Gender is required');
+    }
+
+    if (!data.dateOfBirth) {
+      errors.push('Date of birth is required');
+    }
+
+    // Validate children details if they have children
+    if (data.numberOfChildren > 0) {
+      data.children.forEach((child, index) => {
+        if (!child.name?.trim()) {
+          errors.push(`Child ${index + 1} name is required`);
+        }
+        if (!child.gender) {
+          errors.push(`Child ${index + 1} gender is required`);
+        }
+      });
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  };
+
+  // Prepare form data for API submission
+  const prepareFormData = (): FormData => {
+    const formData = new FormData();
+
+    // Get stored head UUID from localStorage (or use a prop/context in real implementation)
+    let headUuid = '';
+    try {
+      headUuid = localStorage.getItem('familyHeadUuid') || '';
+    } catch (e) {
+      console.log('localStorage not available (artifacts environment):', e);
+      // In artifacts environment, you might pass this as a prop instead
+    }
+
+    // Basic information
+    formData.append('name', data.memberName || '');
+    formData.append(
+      'is_deceased',
+      data.isDeceased === 'Yes' ? 'true' : 'false'
+    );
+    formData.append('gender', data.gender || '');
+    formData.append('date_of_birth', data.dateOfBirth || '');
+    formData.append('head', headUuid); // UUID of the family head
+
+    // Death date if applicable
+    if (data.isDeceased === 'Yes' && data.dateOfDeath) {
+      formData.append('date_of_death', data.dateOfDeath);
+    }
+
+    // Marital information
+    formData.append('marital_status', data.maritalStatus || '');
+    if (data.maritalStatus === 'Married') {
+      if (data.spouseName) formData.append('spouse_name', data.spouseName);
+      if (data.weddingAnniversary)
+        formData.append('wedding_anniversary', data.weddingAnniversary);
+    }
+
+    // Parent information
+    if (data.fatherName) formData.append('father_name', data.fatherName);
+    if (data.motherName) formData.append('mother_name', data.motherName);
+
+    // Children information
+    formData.append('number_of_children', data.numberOfChildren.toString());
+    if (data.numberOfChildren > 0) {
+      formData.append('children', JSON.stringify(data.children));
+    }
+
+    // Photos
+    if (data.personalPhoto) {
+      formData.append('personal_photo', data.personalPhoto);
+    }
+    if (data.familyPhoto) {
+      formData.append('family_photo', data.familyPhoto);
+    }
+
+    return formData;
+  };
+
+  // Expose validation function to parent
+  React.useImperativeHandle(onValidate, () => ({
+    validate: () => {
+      setShowValidation(true);
+      const validation = validateForm();
+      return {
+        ...validation,
+        formData: validation.isValid ? prepareFormData() : undefined,
+      };
+    },
+  }));
+
+  // Alternative approach: if parent calls onValidate as a function
+  React.useEffect(() => {
+    if (onValidate) {
+      const validationFn = () => {
+        setShowValidation(true);
+        const validation = validateForm();
+        return {
+          ...validation,
+          formData: validation.isValid ? prepareFormData() : undefined,
+        };
+      };
+      // Store validation function reference
+      (onValidate as any).current = validationFn;
+    }
+  }, [data, onValidate]);
+
   const handleInputChange = (field: keyof PersonalDetails, value: any) => {
     onChange({ [field]: value });
   };
@@ -56,6 +179,17 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
     file: File | null
   ) => {
     onChange({ [field]: file });
+  };
+
+  // Format date for display
+  const formatDateForInput = (dateString: string | null): string => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      return date.toISOString().split('T')[0];
+    } catch {
+      return dateString;
+    }
   };
 
   const PhotoUploadCard = ({
@@ -159,15 +293,19 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Input
               id="memberName"
               placeholder="Enter your name"
-              value={data.memberName}
+              value={data.memberName || ''}
               onChange={e => handleInputChange('memberName', e.target.value)}
+              className={!data.memberName?.trim() ? 'border-red-200' : ''}
             />
+            {!data.memberName?.trim() && (
+              <p className="text-sm text-red-500">Member name is required</p>
+            )}
           </div>
 
           <div className="space-y-2">
             <Label>Is this member deceased?</Label>
             <Select
-              value={data.isDeceased}
+              value={data.isDeceased || 'No'}
               onValueChange={value => handleInputChange('isDeceased', value)}
             >
               <SelectTrigger>
@@ -183,10 +321,10 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
           <div className="space-y-2">
             <Label>Gender *</Label>
             <Select
-              value={data.gender}
+              value={data.gender || ''}
               onValueChange={value => handleInputChange('gender', value)}
             >
-              <SelectTrigger>
+              <SelectTrigger className={!data.gender ? 'border-red-200' : ''}>
                 <SelectValue placeholder="Select gender" />
               </SelectTrigger>
               <SelectContent>
@@ -197,22 +335,29 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 ))}
               </SelectContent>
             </Select>
+            {!data.gender && (
+              <p className="text-sm text-red-500">Gender is required</p>
+            )}
           </div>
 
           <div className="space-y-2">
             <Label>Date of Birth *</Label>
             <EnhancedDatePicker
-              value={data.dateOfBirth}
+              value={data.dateOfBirth || ''}
               onChange={date => handleInputChange('dateOfBirth', date)}
               placeholder="Select date of birth"
+              className={!data.dateOfBirth ? 'border-red-200' : ''}
             />
+            {!data.dateOfBirth && (
+              <p className="text-sm text-red-500">Date of birth is required</p>
+            )}
           </div>
 
           {data.isDeceased === 'Yes' && (
             <div className="space-y-2">
               <Label>Date of Death</Label>
               <EnhancedDatePicker
-                value={data.dateOfDeath}
+                value={data.dateOfDeath || ''}
                 onChange={date => handleInputChange('dateOfDeath', date)}
                 placeholder="Select date of death"
               />
@@ -232,7 +377,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
           <div className="space-y-2">
             <Label>Marital Status</Label>
             <Select
-              value={data.maritalStatus}
+              value={data.maritalStatus || ''}
               onValueChange={value => handleInputChange('maritalStatus', value)}
             >
               <SelectTrigger>
@@ -254,7 +399,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 <Label htmlFor="spouseName">Spouse Name</Label>
                 <Input
                   id="spouseName"
-                  value={data.spouseName}
+                  value={data.spouseName || ''}
                   onChange={e =>
                     handleInputChange('spouseName', e.target.value)
                   }
@@ -264,7 +409,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
               <div className="space-y-2">
                 <Label>Wedding Anniversary</Label>
                 <EnhancedDatePicker
-                  value={data.weddingAnniversary}
+                  value={data.weddingAnniversary || ''}
                   onChange={date =>
                     handleInputChange('weddingAnniversary', date)
                   }
@@ -279,7 +424,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Input
               id="fatherName"
               placeholder="Enter your father's name"
-              value={data.fatherName}
+              value={data.fatherName || ''}
               onChange={e => handleInputChange('fatherName', e.target.value)}
             />
           </div>
@@ -289,7 +434,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Input
               id="motherName"
               placeholder="Enter your mother's name"
-              value={data.motherName}
+              value={data.motherName || ''}
               onChange={e => handleInputChange('motherName', e.target.value)}
             />
           </div>
@@ -305,7 +450,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <div className="space-y-2">
               <Label>Number of Children</Label>
               <Select
-                value={data.numberOfChildren.toString()}
+                value={(data.numberOfChildren || 0).toString()}
                 onValueChange={value =>
                   handleChildrenCountChange(parseInt(value))
                 }
@@ -334,22 +479,25 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                     <div className="space-y-2">
                       <Label>Child {index + 1} Name</Label>
                       <Input
-                        value={child.name}
+                        value={child.name || ''}
                         onChange={e =>
                           handleChildChange(index, 'name', e.target.value)
                         }
                         placeholder={`Child ${index + 1} name`}
+                        className={!child.name?.trim() ? 'border-red-200' : ''}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label>Gender</Label>
                       <Select
-                        value={child.gender}
+                        value={child.gender || ''}
                         onValueChange={value =>
                           handleChildChange(index, 'gender', value)
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger
+                          className={!child.gender ? 'border-red-200' : ''}
+                        >
                           <SelectValue placeholder="Select gender" />
                         </SelectTrigger>
                         <SelectContent>

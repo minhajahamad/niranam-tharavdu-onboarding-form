@@ -324,7 +324,7 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
             )}
             {!selectedHeadUuid && headOfFamilyInput && (
               <p className="text-sm text-blue-600">
-                ➕ New head will be created
+                + New head will be created
               </p>
             )}
           </div>
