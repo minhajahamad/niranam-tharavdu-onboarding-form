@@ -31,7 +31,7 @@ const STEPS = [
   },
   { id: 4, title: 'Employment', description: 'Work and career details' },
   { id: 5, title: 'Preview', description: 'Review and submit' },
-]
+];
 
 const getInitialFormData = (): FormData => {
   return {
@@ -82,6 +82,50 @@ export const FamilyOnboardingForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedHeadUuid, setSelectedHeadUuid] = useState<string | null>(null);
   const [createdMemberId, setCreatedMemberId] = useState<string | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  // State to track original data for each completed step
+  const [originalStepData, setOriginalStepData] = useState<{
+    [step: number]: any;
+  }>({});
+
+  const markStepCompleted = (step: number) => {
+    setCompletedSteps(prev => new Set(prev).add(step));
+  };
+
+  // Store original data when a step is first completed
+  const storeOriginalStepData = (step: number, data: any) => {
+    setOriginalStepData(prev => ({
+      ...prev,
+      [step]: JSON.parse(JSON.stringify(data)), // Deep clone to avoid reference issues
+    }));
+  };
+
+  // Check if step data has been modified
+  const hasStepDataChanged = (step: number): boolean => {
+    if (!originalStepData[step]) return false;
+
+    let currentData: any;
+    switch (step) {
+      case 1:
+        currentData = formData.familyDetails;
+        break;
+      case 2:
+        currentData = formData.personalDetails;
+        break;
+      case 3:
+        currentData = formData.contactInfo;
+        break;
+      case 4:
+        currentData = formData.employment;
+        break;
+      default:
+        return false;
+    }
+
+    return (
+      JSON.stringify(currentData) !== JSON.stringify(originalStepData[step])
+    );
+  };
 
   // Create refs for step validation
   const personalDetailsValidationRef = useRef<any>();
@@ -141,30 +185,30 @@ export const FamilyOnboardingForm = () => {
     if (!whatsappNumber.trim()) {
       errors.push('WhatsApp number is required');
     } else if (!/^\+?[\d\s-()]+$/.test(whatsappNumber.trim())) {
-      errors.push('Please enter a valid WhatsApp number')
+      errors.push('Please enter a valid WhatsApp number');
     }
 
     return {
       isValid: errors.length === 0,
       errors,
-    }
-  }
+    };
+  };
 
   const validateEmployment = () => {
-    const { jobStatus, companyName, designation } = formData.employment
-    const errors = []
+    const { jobStatus, companyName, designation } = formData.employment;
+    const errors = [];
 
     if (!jobStatus) {
-      errors.push('Job status is required')
+      errors.push('Job status is required');
     }
 
     // If job status is "Working", validate required fields
     if (jobStatus === 'Working') {
       if (!companyName.trim()) {
-        errors.push('Company name is required for working status')
+        errors.push('Company name is required for working status');
       }
       if (!designation.trim()) {
-        errors.push('Designation is required for working status')
+        errors.push('Designation is required for working status');
       }
     }
 
@@ -174,40 +218,66 @@ export const FamilyOnboardingForm = () => {
     };
   };
 
-  const submitMemberData = async (memberFormData: FormData) => {
+  const submitMemberData = async (
+    memberFormData: FormData,
+    isEdit: boolean = false
+  ) => {
     try {
-      console.log('=== DEBUG: Submitting Member Data ===');
-      console.log('API URL:', API_URL.MEMBER.POST_MEMBER);
+      console.log(
+        `=== DEBUG: ${isEdit ? 'Updating' : 'Creating'} Member Data ===`
+      );
 
-      console.log('FormData contents:');
+      let apiUrl: string;
+      let method: string;
+
+      if (isEdit && createdMemberId) {
+        apiUrl = API_URL.MEMBER.EDIT_MEMBER(parseInt(createdMemberId));
+        method = 'PATCH';
+        console.log('PATCH API URL:', apiUrl);
+      } else {
+        apiUrl = API_URL.MEMBER.POST_MEMBER;
+        method = 'POST';
+        console.log('POST API URL:', apiUrl);
+      }
+
       console.log('FormData prepared successfully with all member data');
 
-      const response = await axiosInstance.post(
-        API_URL.MEMBER.POST_MEMBER,
-        memberFormData,
-        {
+      let response;
+      if (isEdit) {
+        response = await axiosInstance.patch(apiUrl, memberFormData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
-        }
+        });
+      } else {
+        response = await axiosInstance.post(apiUrl, memberFormData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+      }
+
+      console.log(
+        `Member ${isEdit ? 'updated' : 'created'} successfully:`,
+        response.data
       );
 
-      console.log('Member created successfully:', response.data);
+      if (!isEdit) {
+        const memberId = response.data.data.id;
+        setCreatedMemberId(memberId);
+        console.log('New member ID:', memberId);
 
-      const memberId = response.data.data.id;
-      setCreatedMemberId(memberId);
-      console.log(memberId);
-
-      try {
-        localStorage.setItem('member_id', memberId);
-        console.log('Stored member ID in localStorage:', memberId);
-      } catch (e) {
-        console.log('localStorage not available (artifacts environment):', e);
+        try {
+          localStorage.setItem('member_id', memberId);
+          console.log('Stored member ID in localStorage:', memberId);
+        } catch (e) {
+          console.log('localStorage not available (artifacts environment):', e);
+        }
       }
 
       return { success: true, data: response.data };
     } catch (error) {
-      console.error('Error creating member:', error);
+      console.error(`Error ${isEdit ? 'updating' : 'creating'} member:`, error);
       console.error('Error response:', error.response);
 
       let errorMessage = '';
@@ -269,17 +339,20 @@ export const FamilyOnboardingForm = () => {
     }
   };
 
-  const submitContactData = async () => {
+  const submitContactData = async (isEdit: boolean = false) => {
     try {
-      console.log('=== DEBUG: Submitting Contact Data ===');
+      console.log(
+        `=== DEBUG: ${isEdit ? 'Updating' : 'Creating'} Contact Data ===`
+      );
 
       // Get member_id from localStorage
       let memberId;
       try {
-        memberId = localStorage.getItem('member_id');
-        console.log('Retrieved member ID from localStorage:', memberId);
+        memberId = localStorage.getItem('member_id') || createdMemberId;
+        console.log('Retrieved member ID:', memberId);
       } catch (e) {
         console.log('localStorage not available (artifacts environment):', e);
+        memberId = createdMemberId;
       }
 
       if (!memberId) {
@@ -290,7 +363,7 @@ export const FamilyOnboardingForm = () => {
 
       // Prepare contact data payload
       const contactPayload = {
-        member_id: parseInt(memberId), // API expects member_id, not member
+        member_id: parseInt(memberId),
         phone_number: formData.contactInfo.contactNumber.trim(),
         whatsapp_number: formData.contactInfo.whatsappNumber.trim() || null,
         email: formData.contactInfo.email.trim() || null,
@@ -298,27 +371,47 @@ export const FamilyOnboardingForm = () => {
       };
 
       console.log('Contact payload:', contactPayload);
+
+      let response;
+      if (isEdit) {
+        // For PATCH, you might need a contact ID. This assumes the API structure
+        const contactId = localStorage.getItem('contact_id'); // Adjust as needed
+        // const patchUrl = API_URL.CONTACT?.EDIT_CONTACT ?
+        //   API_URL.CONTACT.EDIT_CONTACT(parseInt(contactId)) :
+        //   `/api/contacts/${contactId}/`;
+
+        response = await axiosInstance.patch(
+          API_URL.CONTACT.EDIT_CONTACT(id),
+          contactPayload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      } else {
+        response = await axiosInstance.post(
+          API_URL.CONTACT.POST_CONTACT,
+          contactPayload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
       console.log(
-        'API URL:',
-        API_URL.CONTACT?.POST_CONTACT || 'API_URL.CONTACT.POST_CONTACT'
+        `Contact ${isEdit ? 'updated' : 'created'} successfully:`,
+        response.data
       );
-
-      // Make API call (you'll need to add this to your API_URL configuration)
-      const response = await axiosInstance.post(
-        API_URL.CONTACT?.POST_CONTACT || '/api/contacts/', // Update with actual endpoint
-        contactPayload,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      console.log('Contact created successfully:', response.data);
 
       return { success: true, data: response.data };
     } catch (error) {
-      console.error('Error creating contact:', error);
+      console.error(
+        `Error ${isEdit ? 'updating' : 'creating'} contact:`,
+        error
+      );
       console.error('Error response:', error.response);
 
       let errorMessage = '';
@@ -331,7 +424,6 @@ export const FamilyOnboardingForm = () => {
           const errorData = error.response.data;
           console.log('Full error data:', JSON.stringify(errorData, null, 2));
 
-          // Handle common validation errors
           if (errorData.phone_number && Array.isArray(errorData.phone_number)) {
             errorMessage = `Phone Number: ${errorData.phone_number.join(', ')}`;
           } else if (errorData.email && Array.isArray(errorData.email)) {
@@ -345,7 +437,6 @@ export const FamilyOnboardingForm = () => {
           } else if (errorData.detail) {
             errorMessage = errorData.detail;
           } else {
-            // Extract all error messages
             const errors = Object.entries(errorData)
               .map(([field, messages]) => {
                 if (Array.isArray(messages)) {
@@ -374,17 +465,20 @@ export const FamilyOnboardingForm = () => {
     }
   };
 
-  const submitEmploymentData = async () => {
+  const submitEmploymentData = async (isEdit: boolean = false) => {
     try {
-      console.log('=== DEBUG: Submitting Employment Data ===');
+      console.log(
+        `=== DEBUG: ${isEdit ? 'Updating' : 'Creating'} Employment Data ===`
+      );
 
       // Get member_id from localStorage
       let memberId;
       try {
-        memberId = localStorage.getItem('member_id');
-        console.log('Retrieved member ID from localStorage:', memberId);
+        memberId = localStorage.getItem('member_id') || createdMemberId;
+        console.log('Retrieved member ID:', memberId);
       } catch (e) {
         console.log('localStorage not available (artifacts environment):', e);
+        memberId = createdMemberId;
       }
 
       if (!memberId) {
@@ -403,23 +497,39 @@ export const FamilyOnboardingForm = () => {
       };
 
       console.log('Employment payload:', employmentPayload);
-      // console.log('API URL:', API_URL.EMPLOYMENT?.POST_EMPLOYMENT || 'API_URL.EMPLOYMENT.POST_EMPLOYMENT');
 
-      const response = await axiosInstance.post(
-        API_URL.EMPLOYEMENT.POST_EMPLOYEMENT,
-        employmentPayload
-        // {
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //   },
-        // }
+      let response;
+      if (isEdit) {
+        // For PATCH, you might need an employment ID
+        const employmentId = localStorage.getItem('employment_id'); // Adjust as needed
+        // const patchUrl = API_URL.EMPLOYMENT?.EDIT_EMPLOYMENT ?
+        //   API_URL.EMPLOYMENT.EDIT_EMPLOYMENT(parseInt(employmentId)) :
+        //   API_URL.EMPLOYEMENT.EDIT_EMPLOYEMENT ?
+        //   API_URL.EMPLOYEMENT.EDIT_EMPLOYEMENT(parseInt(employmentId)) :
+        //   `/api/employment/${employmentId}/`;
+
+        response = await axiosInstance.patch(
+          API_URL.EMPLOYEMENT.EDIT_EMPLOYEMENT(id),
+          employmentPayload
+        );
+      } else {
+        response = await axiosInstance.post(
+          API_URL.EMPLOYEMENT.POST_EMPLOYEMENT,
+          employmentPayload
+        );
+      }
+
+      console.log(
+        `Employment ${isEdit ? 'updated' : 'created'} successfully:`,
+        response.data
       );
-
-      console.log('Employment created successfully:', response.data);
 
       return { success: true, data: response.data };
     } catch (error) {
-      console.error('Error creating employment:', error);
+      console.error(
+        `Error ${isEdit ? 'updating' : 'creating'} employment:`,
+        error
+      );
       console.error('Error response:', error.response);
 
       let errorMessage = '';
@@ -432,7 +542,6 @@ export const FamilyOnboardingForm = () => {
           const errorData = error.response.data;
           console.log('Full error data:', JSON.stringify(errorData, null, 2));
 
-          // Handle common validation errors
           if (errorData.job_status && Array.isArray(errorData.job_status)) {
             errorMessage = `Job Status: ${errorData.job_status.join(', ')}`;
           } else if (
@@ -452,7 +561,6 @@ export const FamilyOnboardingForm = () => {
           } else if (errorData.detail) {
             errorMessage = errorData.detail;
           } else {
-            // Extract all error messages
             const errors = Object.entries(errorData)
               .map(([field, messages]) => {
                 if (Array.isArray(messages)) {
@@ -482,22 +590,28 @@ export const FamilyOnboardingForm = () => {
   };
 
   const nextStep = async () => {
+    // Check if step is already completed
+    const isStepCompleted = completedSteps.has(currentStep);
+    const hasDataChanged = hasStepDataChanged(currentStep);
+
+    // Skip API call if step is completed and no changes made
+    if (isStepCompleted && !hasDataChanged) {
+      console.log(`Step ${currentStep} already completed with no changes, skipping API call`);
+
+      // Special handling for deceased members
+      if (currentStep === 2 && !isAlive) {
+        setCurrentStep(5); // Skip to preview if deceased
+      } else if (currentStep < maxStep) {
+        setCurrentStep(currentStep + 1);
+      }
+      return;
+    }
+
     if (currentStep === 1) {
       // Handle family details step
       if (!validateFamilyDetails()) {
         return;
       }
-
-      console.log('=== DEBUG: nextStep called for Family Details ===');
-      console.log('selectedHeadUuid:', selectedHeadUuid);
-      console.log(
-        'formData.familyDetails.headOfFamily:',
-        formData.familyDetails.headOfFamily
-      );
-      console.log(
-        'formData.familyDetails.branch:',
-        formData.familyDetails.branch
-      );
 
       setIsSubmitting(true);
 
@@ -505,7 +619,6 @@ export const FamilyOnboardingForm = () => {
         let headUuid: string;
 
         if (selectedHeadUuid) {
-          console.log('Using existing head with UUID:', selectedHeadUuid);
           headUuid = selectedHeadUuid;
 
           try {
@@ -544,7 +657,9 @@ export const FamilyOnboardingForm = () => {
             );
           }
         }
-
+        
+        markStepCompleted(1);
+        storeOriginalStepData(1, formData.familyDetails);
         alert('Family details processed successfully!');
         setCurrentStep(currentStep + 1);
       } catch (error) {
@@ -606,11 +721,13 @@ export const FamilyOnboardingForm = () => {
       setIsSubmitting(true);
 
       try {
-        console.log('Submitting personal details...');
-        const result = await submitMemberData(validation.formData);
+        console.log(`${isStepCompleted ? 'Updating' : 'Creating'} personal details...`);
+        const result = await submitMemberData(validation.formData, isStepCompleted);
 
         if (result.success) {
-          alert('Personal details saved successfully!');
+          markStepCompleted(2);
+          storeOriginalStepData(2, formData.personalDetails);
+          alert(`Personal details ${isStepCompleted ? 'updated' : 'saved'} successfully!`);
 
           if (isAlive) {
             setCurrentStep(currentStep + 1); // Go to contact info
@@ -618,7 +735,7 @@ export const FamilyOnboardingForm = () => {
             setCurrentStep(5); // Skip to preview if deceased
           }
         } else {
-          alert(`Failed to save personal details: ${result.error}`);
+          alert(`Failed to ${isStepCompleted ? 'update' : 'save'} personal details: ${result.error}`);
         }
       } catch (error) {
         console.error('Unexpected error during member submission:', error);
@@ -643,19 +760,21 @@ export const FamilyOnboardingForm = () => {
       setIsSubmitting(true);
 
       try {
-        console.log('Submitting contact information...');
-        const result = await submitContactData();
+        console.log(`${isStepCompleted ? 'Updating' : 'Creating'} contact information...`);
+        const result = await submitContactData(isStepCompleted);
 
         if (result.success) {
-          alert('Contact information saved successfully!');
+          markStepCompleted(3);
+          storeOriginalStepData(3, formData.contactInfo);
+          alert(`Contact information ${isStepCompleted ? 'updated' : 'saved'} successfully!`);
           setCurrentStep(currentStep + 1); // Go to employment step
         } else {
-          alert(`Failed to save contact information: ${result.error}`);
+          alert(`Failed to ${isStepCompleted ? 'update' : 'save'} contact information: ${result.error}`);
         }
       } catch (error) {
         console.error('Unexpected error during contact submission:', error);
         alert(
-          'An unexpected error occurred while saving contact info. Please try again.'
+          `An unexpected error occurred while ${isStepCompleted ? 'updating' : 'saving'} contact info. Please try again.`
         );
       } finally {
         setIsSubmitting(false);
@@ -677,19 +796,21 @@ export const FamilyOnboardingForm = () => {
       setIsSubmitting(true);
 
       try {
-        console.log('Submitting employment information...');
-        const result = await submitEmploymentData();
+        console.log(`${isStepCompleted ? 'Updating' : 'Creating'} employment information...`);
+        const result = await submitEmploymentData(isStepCompleted);
 
         if (result.success) {
-          alert('Employment information saved successfully!');
+          markStepCompleted(4);
+          storeOriginalStepData(4, formData.employment);
+          alert(`Employment information ${isStepCompleted ? 'updated' : 'saved'} successfully!`);
           setCurrentStep(currentStep + 1); // Go to preview step
         } else {
-          alert(`Failed to save employment information: ${result.error}`);
+          alert(`Failed to ${isStepCompleted ? 'update' : 'save'} employment information: ${result.error}`);
         }
       } catch (error) {
         console.error('Unexpected error during employment submission:', error);
         alert(
-          'An unexpected error occurred while saving employment info. Please try again.'
+          `An unexpected error occurred while ${isStepCompleted ? 'updating' : 'saving'} employment info. Please try again.`
         );
       } finally {
         setIsSubmitting(false);
