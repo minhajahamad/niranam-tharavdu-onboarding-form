@@ -15,7 +15,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { Check, Users } from 'lucide-react';
+import { AlertCircle, Check, Users } from 'lucide-react';
 import { FamilyDetails, StepProps } from '../types';
 import { cn } from '@/lib/utils';
 import axiosInstance from '@/components/apiconfig/axios';
@@ -24,12 +24,16 @@ import { API_URL } from '@/components/apiconfig/api_url';
 interface FamilyDetailsStepProps extends StepProps {
   data: FamilyDetails;
   onHeadSelection?: (headUuid: string | null) => void;
+  validationErrors?: { [key: string]: string };
+  onClearError?: (fieldName: string) => void;
 }
 
 export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
   data,
   onChange,
   onHeadSelection,
+  validationErrors = {},
+  onClearError,
 }) => {
   const [headOfFamilyOpen, setHeadOfFamilyOpen] = useState(false);
   const [headOfFamilyInput, setHeadOfFamilyInput] = useState('');
@@ -92,6 +96,7 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
 
   const handleInputChange = (field: keyof FamilyDetails, value: string) => {
     onChange({ [field]: value });
+    onClearError?.(field);
   };
 
   const handleHeadOfFamilySelect = (
@@ -225,7 +230,13 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
               value={data.branch}
               onValueChange={value => handleInputChange('branch', value)}
             >
-              <SelectTrigger>
+              <SelectTrigger
+                className={cn(
+                  'w-full',
+                  validationErrors.branch &&
+                    'border-red-500 focus:border-red-500'
+                )}
+              >
                 <SelectValue placeholder="Select branch" />
               </SelectTrigger>
               <SelectContent>
@@ -236,6 +247,12 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                 ))}
               </SelectContent>
             </Select>
+            {validationErrors.branch && (
+              <div className="flex items-center gap-1 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4" />
+                {validationErrors.branch}
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Head of Family *</Label>
@@ -252,9 +269,12 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                   setHeadOfFamilyOpen(headOfFamilyInput.length > 0)
                 }
                 disabled={!data.branch}
-                className={
-                  selectedHeadUuid ? 'border-green-500 bg-green-50' : ''
-                }
+                className={cn(
+                  'w-full',
+                  selectedHeadUuid && 'border-green-500 bg-green-50',
+                  validationErrors.headOfFamily &&
+                    'border-red-500 focus:border-red-500'
+                )}
               />
               {selectedHeadUuid && (
                 <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
@@ -317,14 +337,28 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                 </div>
               )}
             </div>
-            {selectedHeadUuid && (
-              <p className="text-sm text-green-600">✓ Existing head selected</p>
+
+            {validationErrors.headOfFamily && (
+              <div className="flex items-center gap-1 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4" />
+                {validationErrors.headOfFamily}
+              </div>
             )}
-            {!selectedHeadUuid && headOfFamilyInput && (
-              <p className="text-sm text-blue-600">
-                + New head will be created
+
+            {!validationErrors.headOfFamily && selectedHeadUuid && (
+              <p className="text-sm text-green-600 flex items-center gap-1">
+                <Check className="h-3 w-3" />
+                Existing head selected
               </p>
             )}
+
+            {!validationErrors.headOfFamily &&
+              !selectedHeadUuid &&
+              headOfFamilyInput && (
+                <p className="text-sm text-blue-600">
+                  + New head will be created
+                </p>
+              )}
           </div>
         </CardContent>
       </Card>

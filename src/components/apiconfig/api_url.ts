@@ -7,7 +7,7 @@ export const API_URL = {
   HEAD_MEMBER: {
     POST_HEAD_MEMBER: 'api/family/create/',
     SEARCH_HEAD_MEMBER: 'api/family/search/',
-    EDIT_HEAD_MEMBER: (uuid: number) => `api/family/${uuid}/update`,
+    EDIT_HEAD_MEMBER: (uuid: string) => `api/family/${uuid}/update/`,
   },
   MEMBER: {
     POST_MEMBER: 'api/members/',
@@ -22,8 +22,11 @@ export const API_URL = {
     POST_EMPLOYEMENT: 'api/employments/',
     EDIT_EMPLOYEMENT: (id: number) => `api/employments/${id}/`,
   },
-  PREVIEW_DETAILS: {
+  FULL_DETAILS: {
     GET_FULL_DETAILS: 'api/family/full-details/',
-    POST_FULL_DETAILS: 'api/family/full-details/',
+  },
+  PREVIEW_DETAILS: {
+    GET_PREVIEW_DETAILS_WITH_ID: (uuid: string, id: number) =>
+      `api/family/${uuid}/member/${id}/`,
   },
 };

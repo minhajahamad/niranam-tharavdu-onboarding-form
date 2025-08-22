@@ -88,6 +88,10 @@ export const FamilyOnboardingForm = () => {
     [step: number]: any;
   }>({});
 
+  const [validationErrors, setValidationErrors] = useState<{
+    [key: string]: string;
+  }>({});
+
   const markStepCompleted = (step: number) => {
     setCompletedSteps(prev => new Set(prev).add(step));
   };
@@ -138,6 +142,13 @@ export const FamilyOnboardingForm = () => {
       ...prev,
       [step]: { ...prev[step], ...data },
     }));
+
+    // Clear validation errors when data changes
+    if (step === 'familyDetails') {
+      Object.keys(data).forEach(field => {
+        clearFieldError(field);
+      });
+    }
   };
 
   const handleHeadSelection = (headUuid: string | null) => {
@@ -145,16 +156,28 @@ export const FamilyOnboardingForm = () => {
   };
 
   const validateFamilyDetails = () => {
-    const { headOfFamily, branch } = formData.familyDetails;
-    if (!headOfFamily.trim()) {
-      alert('Please enter head of family name');
-      return false;
+    const errors: { [key: string]: string } = {};
+
+    if (!formData.familyDetails.branch) {
+      errors.branch = 'Please select a branch';
     }
-    if (!branch) {
-      alert('Please select a branch');
-      return false;
+
+    if (!formData.familyDetails.headOfFamily.trim()) {
+      errors.headOfFamily = 'Please enter head of family';
     }
-    return true;
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const clearFieldError = (fieldName: string) => {
+    if (validationErrors[fieldName]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
   };
 
   const validatePersonalDetails = () => {
@@ -216,6 +239,166 @@ export const FamilyOnboardingForm = () => {
       isValid: errors.length === 0,
       errors,
     };
+  };
+
+  const submitFamilyDetailsData = async (isEdit: boolean = false) => {
+    try {
+      console.log(
+        `=== DEBUG: ${isEdit ? 'Updating' : 'Creating'} Family Details Data ===`
+      );
+
+      let headUuid: string;
+
+      if (isEdit) {
+        // For editing, get the UUID from localStorage
+        try {
+          headUuid = localStorage.getItem('familyHeadUuid') || '';
+          console.log('Retrieved head UUID for update:', headUuid);
+        } catch (e) {
+          console.log('localStorage not available (artifacts environment):', e);
+          headUuid = '';
+        }
+
+        if (!headUuid) {
+          throw new Error(
+            'Family head UUID not found. Cannot update family details.'
+          );
+        }
+
+        const payload = {
+          branch: parseInt(formData.familyDetails.branch),
+          head_name: formData.familyDetails.headOfFamily.trim(),
+        };
+
+        console.log('Updating head with payload:', payload);
+        console.log(
+          'PATCH API URL:',
+          API_URL.HEAD_MEMBER.EDIT_HEAD_MEMBER(headUuid)
+        );
+
+        const response = await axiosInstance.patch(
+          API_URL.HEAD_MEMBER.EDIT_HEAD_MEMBER(headUuid),
+          payload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        console.log('Head updated successfully:', response.data);
+        return { success: true, data: response.data, uuid: headUuid };
+      } else {
+        // For creating new head
+        if (selectedHeadUuid) {
+          headUuid = selectedHeadUuid;
+
+          try {
+            localStorage.setItem('familyHeadUuid', headUuid);
+            console.log('Stored existing head UUID in localStorage:', headUuid);
+          } catch (e) {
+            console.log(
+              'localStorage not available (artifacts environment):',
+              e
+            );
+          }
+
+          return {
+            success: true,
+            data: null,
+            uuid: headUuid,
+            isExisting: true,
+          };
+        } else {
+          const payload = {
+            branch: parseInt(formData.familyDetails.branch),
+            head_name: formData.familyDetails.headOfFamily.trim(),
+          };
+
+          console.log('Creating new head with payload:', payload);
+          const response = await axiosInstance.post(
+            API_URL.HEAD_MEMBER.POST_HEAD_MEMBER,
+            payload
+          );
+
+          console.log('New head created successfully:', response.data);
+          headUuid = response.data.uuid;
+
+          try {
+            localStorage.setItem('familyHeadUuid', headUuid);
+            console.log('Stored new head UUID in localStorage:', headUuid);
+          } catch (e) {
+            console.log(
+              'localStorage not available (artifacts environment):',
+              e
+            );
+          }
+
+          return { success: true, data: response.data, uuid: headUuid };
+        }
+      }
+    } catch (error) {
+      console.error(
+        `Error ${isEdit ? 'updating' : 'creating'} family details:`,
+        error
+      );
+      console.error('Error response:', error.response);
+
+      let errorMessage = '';
+
+      if (error.response) {
+        console.log('Response data:', error.response.data);
+        console.log('Response status:', error.response.status);
+
+        if (error.response.data && typeof error.response.data === 'object') {
+          const errorData = error.response.data;
+          console.log('Full error data:', JSON.stringify(errorData, null, 2));
+
+          if (errorData.head_name && Array.isArray(errorData.head_name)) {
+            errorMessage = `Head Name: ${errorData.head_name.join(', ')}`;
+          } else if (errorData.branch && Array.isArray(errorData.branch)) {
+            errorMessage = `Branch: ${errorData.branch.join(', ')}`;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          } else if (errorData.detail) {
+            errorMessage = errorData.detail;
+          } else {
+            const errors = Object.entries(errorData)
+              .map(([field, messages]) => {
+                if (Array.isArray(messages)) {
+                  return `${field}: ${messages.join(', ')}`;
+                }
+                return `${field}: ${messages}`;
+              })
+              .join('\n');
+            errorMessage = errors || JSON.stringify(errorData);
+          }
+
+          if (
+            errorMessage.includes('already exists') ||
+            errorMessage.includes('duplicate')
+          ) {
+            errorMessage +=
+              '\n\nSuggestions:\n1. Try a different name\n2. Or search and select the existing head from the dropdown';
+          }
+        } else {
+          errorMessage =
+            error.response.data?.message ||
+            error.response.data?.error ||
+            `Server error: ${error.response.status}`;
+        }
+      } else if (error.request) {
+        errorMessage =
+          'Network error: Unable to connect to server. Please check your connection.';
+      } else {
+        errorMessage =
+          error.message || 'An unexpected error occurred. Please try again.';
+      }
+
+      return { success: false, error: errorMessage };
+    }
   };
 
   const submitMemberData = async (
@@ -686,86 +869,42 @@ export const FamilyOnboardingForm = () => {
       setIsSubmitting(true);
 
       try {
-        let headUuid: string;
+        console.log(
+          `${isStepCompleted ? 'Updating' : 'Creating'} family details...`
+        );
 
-        if (selectedHeadUuid) {
-          headUuid = selectedHeadUuid;
+        const result = await submitFamilyDetailsData(isStepCompleted);
 
-          try {
-            localStorage.setItem('familyHeadUuid', headUuid);
-            console.log('Stored existing head UUID in localStorage:', headUuid);
-          } catch (e) {
-            console.log(
-              'localStorage not available (artifacts environment):',
-              e
-            );
-          }
+        if (result.success) {
+          markStepCompleted(1);
+          storeOriginalStepData(1, formData.familyDetails);
 
-          alert('Existing family head selected successfully!');
-        } else {
-          const payload = {
-            branch: parseInt(formData.familyDetails.branch),
-            head_name: formData.familyDetails.headOfFamily.trim(),
-          };
-
-          console.log('Creating new head with payload:', payload);
-          const response = await axiosInstance.post(
-            API_URL.HEAD_MEMBER.POST_HEAD_MEMBER,
-            payload
-          );
-
-          console.log('New head created successfully:', response.data);
-          headUuid = response.data.uuid;
-
-          try {
-            localStorage.setItem('familyHeadUuid', headUuid);
-            console.log('Stored new head UUID in localStorage:', headUuid);
-          } catch (e) {
-            console.log(
-              'localStorage not available (artifacts environment):',
-              e
-            );
-          }
-        }
-
-        markStepCompleted(1);
-        storeOriginalStepData(1, formData.familyDetails);
-        alert('Family details processed successfully!');
-        setCurrentStep(currentStep + 1);
-      } catch (error) {
-        console.error('Error processing family details:', error);
-
-        let errorMessage = '';
-        if (error.response?.data) {
-          const errorData = error.response.data;
-          if (errorData.head_name && Array.isArray(errorData.head_name)) {
-            errorMessage = errorData.head_name.join(', ');
-          } else if (errorData.branch && Array.isArray(errorData.branch)) {
-            errorMessage = errorData.branch.join(', ');
+          if (result.isExisting) {
+            // alert('Existing family head selected successfully!');
           } else {
-            errorMessage =
-              errorData.message ||
-              errorData.error ||
-              errorData.detail ||
-              `Server error: ${error.response.status}`;
+            // alert(
+            //   `Family details ${
+            //     isStepCompleted ? 'updated' : 'processed'
+            //   } successfully!`
+            // );
           }
 
-          if (
-            errorMessage.includes('already exists') ||
-            errorMessage.includes('duplicate')
-          ) {
-            errorMessage +=
-              '\n\nSuggestions:\n1. Try a different name\n2. Or search and select the existing head from the dropdown';
-          }
-        } else if (error.request) {
-          errorMessage =
-            'Network error: Unable to connect to server. Please check your connection.';
+          setCurrentStep(currentStep + 1);
         } else {
-          errorMessage = 'An unexpected error occurred. Please try again.';
+          // alert(
+          //   `Failed to ${
+          //     isStepCompleted ? 'update' : 'process'
+          //   } family details: ${result.error}`
+          // );
         }
-
-        alert(`Failed to process family details: ${errorMessage}`);
-        return;
+      } catch (error) {
+        console.error(
+          'Unexpected error during family details processing:',
+          error
+        );
+        // alert(
+        //   'An unexpected error occurred while processing family details. Please try again.'
+        // );
       } finally {
         setIsSubmitting(false);
       }
@@ -777,14 +916,14 @@ export const FamilyOnboardingForm = () => {
 
       if (!validation.isValid) {
         console.log('Personal details validation failed:', validation.errors);
-        alert(
-          `Please fix the following errors:\n${validation.errors.join('\n')}`
-        );
+        // alert(
+        //   `Please fix the following errors:\n${validation.errors.join('\n')}`
+        // );
         return;
       }
 
       if (!validation.formData) {
-        alert('Form data preparation failed. Please try again.');
+        // alert('Form data preparation failed. Please try again.');
         return;
       }
 
@@ -802,11 +941,11 @@ export const FamilyOnboardingForm = () => {
         if (result.success) {
           markStepCompleted(2);
           storeOriginalStepData(2, formData.personalDetails);
-          alert(
-            `Personal details ${
-              isStepCompleted ? 'updated' : 'saved'
-            } successfully!`
-          );
+          // alert(
+          //   `Personal details ${
+          //     isStepCompleted ? 'updated' : 'saved'
+          //   } successfully!`
+          // );
 
           if (isAlive) {
             setCurrentStep(currentStep + 1); // Go to contact info
@@ -814,15 +953,15 @@ export const FamilyOnboardingForm = () => {
             setCurrentStep(5); // Skip to preview if deceased
           }
         } else {
-          alert(
-            `Failed to ${
-              isStepCompleted ? 'update' : 'save'
-            } personal details: ${result.error}`
-          );
+          // alert(
+          //   `Failed to ${
+          //     isStepCompleted ? 'update' : 'save'
+          //   } personal details: ${result.error}`
+          // );
         }
       } catch (error) {
         console.error('Unexpected error during member submission:', error);
-        alert('An unexpected error occurred while saving. Please try again.');
+        // alert('An unexpected error occurred while saving. Please try again.');
       } finally {
         setIsSubmitting(false);
       }
@@ -834,9 +973,9 @@ export const FamilyOnboardingForm = () => {
 
       if (!validation.isValid) {
         console.log('Contact info validation failed:', validation.errors);
-        alert(
-          `Please fix the following errors:\n${validation.errors.join('\n')}`
-        );
+        // alert(
+        //   `Please fix the following errors:\n${validation.errors.join('\n')}`
+        // );
         return;
       }
 
@@ -851,26 +990,26 @@ export const FamilyOnboardingForm = () => {
         if (result.success) {
           markStepCompleted(3);
           storeOriginalStepData(3, formData.contactInfo);
-          alert(
-            `Contact information ${
-              isStepCompleted ? 'updated' : 'saved'
-            } successfully!`
-          );
+          // alert(
+          //   `Contact information ${
+          //     isStepCompleted ? 'updated' : 'saved'
+          //   } successfully!`
+          // );
           setCurrentStep(currentStep + 1); // Go to employment step
         } else {
-          alert(
-            `Failed to ${
-              isStepCompleted ? 'update' : 'save'
-            } contact information: ${result.error}`
-          );
+          // alert(
+          //   `Failed to ${
+          //     isStepCompleted ? 'update' : 'save'
+          //   } contact information: ${result.error}`
+          // );
         }
       } catch (error) {
         console.error('Unexpected error during contact submission:', error);
-        alert(
-          `An unexpected error occurred while ${
-            isStepCompleted ? 'updating' : 'saving'
-          } contact info. Please try again.`
-        );
+        // alert(
+        //   `An unexpected error occurred while ${
+        //     isStepCompleted ? 'updating' : 'saving'
+        //   } contact info. Please try again.`
+        // );
       } finally {
         setIsSubmitting(false);
       }
@@ -901,26 +1040,26 @@ export const FamilyOnboardingForm = () => {
         if (result.success) {
           markStepCompleted(4);
           storeOriginalStepData(4, formData.employment);
-          alert(
-            `Employment information ${
-              isStepCompleted ? 'updated' : 'saved'
-            } successfully!`
-          );
+          // alert(
+          //   `Employment information ${
+          //     isStepCompleted ? 'updated' : 'saved'
+          //   } successfully!`
+          // );
           setCurrentStep(currentStep + 1); // Go to preview step
         } else {
-          alert(
-            `Failed to ${
-              isStepCompleted ? 'update' : 'save'
-            } employment information: ${result.error}`
-          );
+          // alert(
+          //   `Failed to ${
+          //     isStepCompleted ? 'update' : 'save'
+          //   } employment information: ${result.error}`
+          // );
         }
       } catch (error) {
         console.error('Unexpected error during employment submission:', error);
-        alert(
-          `An unexpected error occurred while ${
-            isStepCompleted ? 'updating' : 'saving'
-          } employment info. Please try again.`
-        );
+        // alert(
+        //   `An unexpected error occurred while ${
+        //     isStepCompleted ? 'updating' : 'saving'
+        //   } employment info. Please try again.`
+        // );
       } finally {
         setIsSubmitting(false);
       }
@@ -954,7 +1093,7 @@ export const FamilyOnboardingForm = () => {
     console.log('Created member ID:', createdMemberId);
 
     // Show success alert
-    alert('Member added successfully!');
+    // alert('Member added successfully!');
 
     // Clear all data from localStorage
     try {
@@ -995,6 +1134,8 @@ export const FamilyOnboardingForm = () => {
             data={formData.familyDetails}
             onChange={data => updateFormData('familyDetails', data)}
             onHeadSelection={handleHeadSelection}
+            validationErrors={validationErrors}
+            onClearError={clearFieldError}
           />
         );
       case 2:
@@ -1098,7 +1239,9 @@ export const FamilyOnboardingForm = () => {
               {isSubmitting ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  {currentStep === 2
+                  {currentStep === 1
+                    ? 'Saving Family...'
+                    : currentStep === 2
                     ? 'Saving Member...'
                     : currentStep === 3
                     ? 'Saving Contact...'

@@ -236,34 +236,79 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
   onValidate,
 }) => {
   const [showValidation, setShowValidation] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{
+    [key: string]: string;
+  }>({});
+
+  // Clear field error when user starts typing/selecting
+  const clearFieldError = (fieldName: string) => {
+    if (validationErrors[fieldName]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+  };
 
   // Validate required fields
   const validateForm = (): { isValid: boolean; errors: string[] } => {
     const errors: string[] = [];
+    const fieldErrors: { [key: string]: string } = {};
 
     if (!data.memberName?.trim()) {
-      errors.push('Member name is required');
+      // errors.push('Member name is required');
+      fieldErrors.memberName = 'Please enter member name';
     }
 
     if (!data.gender) {
-      errors.push('Gender is required');
+      // errors.push('Gender is required');
+      fieldErrors.gender = 'Please select gender';
     }
 
     if (!data.dateOfBirth) {
-      errors.push('Date of birth is required');
+      // errors.push('Date of birth is required');
+      fieldErrors.dateOfBirth = 'Please select date of birth';
+    }
+
+    if (!data.maritalStatus) {
+      // errors.push('Marital status is required');
+      fieldErrors.maritalStatus = 'Please select marital status';
+    }
+
+    // Validate married person's spouse details
+    if (data.maritalStatus === 'Married') {
+      if (!data.spouseName?.trim()) {
+        // errors.push('Spouse name is required for married status');
+        fieldErrors.spouseName = 'Please enter spouse name';
+      }
+      if (!data.weddingAnniversary) {
+        // errors.push('Wedding anniversary is required for married status');
+        fieldErrors.weddingAnniversary = 'Please select wedding anniversary';
+      }
+    }
+
+    // Validate death date for deceased members
+    if (data.isDeceased === 'Yes' && !data.dateOfDeath) {
+      // errors.push('Date of death is required for deceased member');
+      fieldErrors.dateOfDeath = 'Please select date of death';
     }
 
     // Validate children details if they have children
     if (data.numberOfChildren > 0) {
       data.children.forEach((child, index) => {
         if (!child.name?.trim()) {
-          errors.push(`Child ${index + 1} name is required`);
+          // errors.push(`Child ${index + 1} name is required`);
+          fieldErrors[`child_${index}_name`] = 'Please enter child name';
         }
         if (!child.gender) {
-          errors.push(`Child ${index + 1} gender is required`);
+          // errors.push(`Child ${index + 1} gender is required`);
+          fieldErrors[`child_${index}_gender`] = 'Please select child gender';
         }
       });
     }
+
+    setValidationErrors(fieldErrors);
 
     return {
       isValid: errors.length === 0,
@@ -366,6 +411,16 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
 
   const handleInputChange = (field: keyof PersonalDetails, value: any) => {
     onChange({ [field]: value });
+    // Clear validation error when user starts typing/selecting
+    clearFieldError(field);
+    // Also clear related field errors
+    if (field === 'maritalStatus' && value !== 'Married') {
+      clearFieldError('spouseName');
+      clearFieldError('weddingAnniversary');
+    }
+    if (field === 'isDeceased' && value !== 'Yes') {
+      clearFieldError('dateOfDeath');
+    }
   };
 
   const handleChildrenCountChange = (count: number) => {
@@ -374,6 +429,12 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
       (_, i) => data.children[i] || { name: '', gender: '' }
     );
     onChange({ numberOfChildren: count, children });
+    
+    // Clear children-related validation errors
+    for (let i = 0; i < 20; i++) {
+      clearFieldError(`child_${i}_name`);
+      clearFieldError(`child_${i}_gender`);
+    }
   };
 
   const handleChildChange = (
@@ -384,6 +445,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
     const updatedChildren = [...data.children];
     updatedChildren[index] = { ...updatedChildren[index], [field]: value };
     onChange({ children: updatedChildren });
+    
+    // Clear specific child field error
+    clearFieldError(`child_${index}_${field}`);
   };
 
   const handleFileUpload = (
@@ -391,17 +455,6 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
     file: File | null
   ) => {
     onChange({ [field]: file });
-  };
-
-  // Format date for display
-  const formatDateForInput = (dateString: string | null): string => {
-    if (!dateString) return '';
-    try {
-      const date = new Date(dateString);
-      return date.toISOString().split('T')[0];
-    } catch {
-      return dateString;
-    }
   };
 
   const PhotoUploadCard = ({
@@ -513,23 +566,19 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="memberName">
-              Member Name <span className="text-red-500">*</span>
-            </Label>
+            <Label htmlFor="memberName">Member Name *</Label>
             <Input
               id="memberName"
-              placeholder="Enter your name"
+              placeholder="Enter member name"
               value={data.memberName || ''}
               onChange={e => handleInputChange('memberName', e.target.value)}
               required
-              className={
-                showValidation && !data.memberName?.trim()
-                  ? 'border-red-200'
-                  : ''
-              }
+              className={validationErrors.memberName ? 'border-red-500' : ''}
             />
-            {showValidation && !data.memberName?.trim() && (
-              <p className="text-sm text-red-500">Member name is required</p>
+            {validationErrors.memberName && (
+              <p className="text-sm text-red-500">
+                {validationErrors.memberName}
+              </p>
             )}
           </div>
 
@@ -550,17 +599,13 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
           </div>
 
           <div className="space-y-2">
-            <Label>
-              Gender <span className="text-red-500">*</span>
-            </Label>
+            <Label>Gender *</Label>
             <Select
               value={data.gender || ''}
               onValueChange={value => handleInputChange('gender', value)}
             >
               <SelectTrigger
-                className={
-                  showValidation && !data.gender ? 'border-red-200' : ''
-                }
+                className={validationErrors.gender ? 'border-red-500' : ''}
               >
                 <SelectValue placeholder="Select gender" />
               </SelectTrigger>
@@ -572,36 +617,40 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 ))}
               </SelectContent>
             </Select>
-            {showValidation && !data.gender && (
-              <p className="text-sm text-red-500">Gender is required</p>
+            {validationErrors.gender && (
+              <p className="text-sm text-red-500">{validationErrors.gender}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label>
-              Date of Birth <span className="text-red-500">*</span>
-            </Label>
+            <Label>Date of Birth *</Label>
             <EnhancedDatePicker
               value={data.dateOfBirth || ''}
               onChange={date => handleInputChange('dateOfBirth', date)}
               placeholder="Select date of birth"
-              className={
-                showValidation && !data.dateOfBirth ? 'border-red-200' : ''
-              }
+              className={validationErrors.dateOfBirth ? 'border-red-500' : ''}
             />
-            {showValidation && !data.dateOfBirth && (
-              <p className="text-sm text-red-500">Date of birth is required</p>
+            {validationErrors.dateOfBirth && (
+              <p className="text-sm text-red-500">
+                {validationErrors.dateOfBirth}
+              </p>
             )}
           </div>
 
           {data.isDeceased === 'Yes' && (
             <div className="space-y-2">
-              <Label>Date of Death</Label>
+              <Label>Date of Death *</Label>
               <EnhancedDatePicker
                 value={data.dateOfDeath || ''}
                 onChange={date => handleInputChange('dateOfDeath', date)}
                 placeholder="Select date of death"
+                className={validationErrors.dateOfDeath ? 'border-red-500' : ''}
               />
+              {validationErrors.dateOfDeath && (
+                <p className="text-sm text-red-500">
+                  {validationErrors.dateOfDeath}
+                </p>
+              )}
             </div>
           )}
         </CardContent>
@@ -616,13 +665,17 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label>Marital Status</Label>
+            <Label>Marital Status *</Label>
             <Select
               value={data.maritalStatus || ''}
               onValueChange={value => handleInputChange('maritalStatus', value)}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Select status" />
+              <SelectTrigger
+                className={
+                  validationErrors.maritalStatus ? 'border-red-500' : ''
+                }
+              >
+                <SelectValue placeholder="Select marital status" />
               </SelectTrigger>
               <SelectContent>
                 {MARITAL_STATUS.map(status => (
@@ -632,31 +685,50 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 ))}
               </SelectContent>
             </Select>
+            {validationErrors.maritalStatus && (
+              <p className="text-sm text-red-500">
+                {validationErrors.maritalStatus}
+              </p>
+            )}
           </div>
 
           {data.maritalStatus === 'Married' && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="spouseName">Spouse Name</Label>
+                <Label htmlFor="spouseName">Spouse Name *</Label>
                 <Input
                   id="spouseName"
-                  placeholder="Enter spouse's name"
+                  placeholder="Enter spouse name"
                   value={data.spouseName || ''}
                   onChange={e =>
                     handleInputChange('spouseName', e.target.value)
                   }
+                  className={validationErrors.spouseName ? 'border-red-500' : ''}
                 />
+                {validationErrors.spouseName && (
+                  <p className="text-sm text-red-500">
+                    {validationErrors.spouseName}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label>Wedding Anniversary</Label>
+                <Label>Wedding Anniversary *</Label>
                 <EnhancedDatePicker
                   value={data.weddingAnniversary || ''}
                   onChange={date =>
                     handleInputChange('weddingAnniversary', date)
                   }
-                  placeholder="Select anniversary date"
+                  placeholder="Select wedding anniversary"
+                  className={
+                    validationErrors.weddingAnniversary ? 'border-red-500' : ''
+                  }
                 />
+                {validationErrors.weddingAnniversary && (
+                  <p className="text-sm text-red-500">
+                    {validationErrors.weddingAnniversary}
+                  </p>
+                )}
               </div>
             </>
           )}
@@ -667,7 +739,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
               id="fatherName"
               value={data.fatherName || ''}
               onChange={handleFatherNameChange}
-              placeholder="Enter your father's name"
+              placeholder="Enter father name"
               gender="Male"
             />
           </div>
@@ -676,7 +748,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
             <Label htmlFor="motherName">Mother Name</Label>
             <Input
               id="motherName"
-              placeholder="Enter your mother's name"
+              placeholder="Enter mother name"
               value={data.motherName || ''}
               onChange={e => handleInputChange('motherName', e.target.value)}
             />
@@ -699,7 +771,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="How many children?" />
+                  <SelectValue placeholder="Select number of children" />
                 </SelectTrigger>
                 <SelectContent>
                   {Array.from({ length: 21 }, (_, i) => (
@@ -720,32 +792,27 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                     className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border rounded-lg"
                   >
                     <div className="space-y-2">
-                      <Label>
-                        Child {index + 1} Name{' '}
-                        <span className="text-red-500">*</span>
-                      </Label>
+                      <Label>Child {index + 1} Name *</Label>
                       <Input
                         value={child.name || ''}
                         onChange={e =>
                           handleChildChange(index, 'name', e.target.value)
                         }
-                        placeholder={`Child ${index + 1} name`}
+                        placeholder={`Enter child ${index + 1} name`}
                         className={
-                          showValidation && !child.name?.trim()
-                            ? 'border-red-200'
+                          validationErrors[`child_${index}_name`]
+                            ? 'border-red-500'
                             : ''
                         }
                       />
-                      {showValidation && !child.name?.trim() && (
+                      {validationErrors[`child_${index}_name`] && (
                         <p className="text-sm text-red-500">
-                          Child name is required
+                          {validationErrors[`child_${index}_name`]}
                         </p>
                       )}
                     </div>
                     <div className="space-y-2">
-                      <Label>
-                        Gender <span className="text-red-500">*</span>
-                      </Label>
+                      <Label>Gender *</Label>
                       <Select
                         value={child.gender || ''}
                         onValueChange={value =>
@@ -754,21 +821,21 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                       >
                         <SelectTrigger
                           className={
-                            showValidation && !child.gender
-                              ? 'border-red-200'
+                            validationErrors[`child_${index}_gender`]
+                              ? 'border-red-500'
                               : ''
                           }
                         >
                           <SelectValue placeholder="Select gender" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Son">Son</SelectItem>
-                          <SelectItem value="Daughter">Daughter</SelectItem>
+                          <SelectItem value="Son">Male</SelectItem>
+                          <SelectItem value="Daughter">Female</SelectItem>
                         </SelectContent>
                       </Select>
-                      {showValidation && !child.gender && (
+                      {validationErrors[`child_${index}_gender`] && (
                         <p className="text-sm text-red-500">
-                          Child gender is required
+                          {validationErrors[`child_${index}_gender`]}
                         </p>
                       )}
                     </div>

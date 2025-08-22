@@ -45,12 +45,12 @@ interface Member {
   is_deceased: boolean;
   gender: string;
   date_of_birth: string;
-  date_of_death?: string;
+  date_of_death?: string | null;
   marital_status: string;
-  spouse_name: string;
-  wedding_anniversary: string;
-  father_name: string;
-  mother_name: string;
+  spouse_name: string | null;
+  wedding_anniversary: string | null;
+  father_name: string | null;
+  mother_name: string | null;
   number_of_children: number;
   personal_photo: string | null;
   family_photo: string | null;
@@ -63,7 +63,7 @@ interface Member {
 
 interface ApiResponse {
   message: string;
-  data: Member[];
+  data: Member; // Changed from Member[] to Member
 }
 
 interface PreviewStepProps {
@@ -71,10 +71,9 @@ interface PreviewStepProps {
 }
 
 export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
-  const [data, setData] = useState<Member[]>([]);
+  const [data, setData] = useState<Member | null>(null); // Changed to single Member
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -86,27 +85,25 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
         }
 
         const memberId = localStorage.getItem('member_id');
-        if (!memberId) {
+        const Id = parseInt(memberId);
+        if (!Id) {
           setError('Member Id not found');
           return;
         }
 
         const res = await axiosInstance.get<ApiResponse>(
-          API_URL.PREVIEW_DETAILS.GET_FULL_DETAILS,
-          {
-            params: { head_uuid: headUuid, member_id: memberId },
-          }
+          API_URL.PREVIEW_DETAILS.GET_PREVIEW_DETAILS_WITH_ID(headUuid, Id)
         );
 
         if (res.data && res.data.data) {
           setData(res.data.data);
-          console.log('Fetched family details:', res.data.data);
+          console.log('Fetched member details:', res.data.data);
         } else {
           setError('No data received from API');
         }
       } catch (err) {
         console.error('Error fetching details:', err);
-        setError('Failed to fetch family details');
+        setError('Failed to fetch member details');
       } finally {
         setLoading(false);
       }
@@ -139,10 +136,10 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
     );
   }
 
-  if (!data || data.length === 0) {
+  if (!data) {
     return (
       <div className="text-center p-8">
-        <p className="text-muted-foreground">No family details found.</p>
+        <p className="text-muted-foreground">No member details found.</p>
       </div>
     );
   }
@@ -187,8 +184,19 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
     value?: string | number | null;
     icon?: React.ReactNode;
   }) => {
-    // Don't render if value is null, undefined, or empty string
+    // Don't render if value is null, undefined, empty string, or 0 for optional numeric fields
     if (value === null || value === undefined || value === '') {
+      return null;
+    }
+
+    // For number of children, show 0 as it's meaningful information
+    if (label === 'Number of Children' && value === 0) {
+      // Show 0 for number of children as it's valid information
+    } else if (
+      typeof value === 'number' &&
+      value === 0 &&
+      label !== 'Number of Children'
+    ) {
       return null;
     }
 
@@ -203,7 +211,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
     );
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null) => {
     if (!dateString) return null;
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -211,6 +219,8 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
       day: 'numeric',
     });
   };
+
+  const isAlive = !data.is_deceased;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -220,260 +230,232 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
           Please review all information before submitting your registration
         </p>
         <Badge variant="secondary" className="mt-2">
-          {data.length} Member{data.length > 1 ? 's' : ''} Found
+          Member Details
         </Badge>
       </div>
 
-      {data.map((member, idx) => {
-        const isAlive = !member.is_deceased;
-
-        return (
-          <div
-            key={member.id}
-            className="space-y-4 border-2 border-gray-100 p-6 rounded-xl shadow-lg bg-white"
-          >
-            {/* Member Header */}
-            <div className="flex items-center justify-between border-b pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-family-primary/10 rounded-full flex items-center justify-center">
-                  <User className="h-6 w-6 text-family-primary" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold">{member.name}</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Member #{idx + 1}
-                  </p>
-                </div>
-              </div>
-              {!isAlive && (
-                <Badge variant="secondary" className="bg-gray-100">
-                  <Heart className="h-3 w-3 mr-1" />
-                  Deceased
-                </Badge>
-              )}
+      <div className="space-y-4 border-2 border-gray-100 p-6 rounded-xl shadow-lg bg-white">
+        {/* Member Header */}
+        <div className="flex items-center justify-between border-b pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-family-primary/10 rounded-full flex items-center justify-center">
+              <User className="h-6 w-6 text-family-primary" />
             </div>
-
-            {/* Family Details */}
-            <InfoCard
-              title="Family Information"
-              icon={<Users className="h-5 w-5 text-family-primary" />}
-              onEditClick={() => onEdit(1)}
-            >
-              <DetailRow
-                label="Branch"
-                value={member.head_branch}
-                icon={<Users className="h-4 w-4" />}
-              />
-              {/* <DetailRow
-                label="Head"
-                value={member.head_branch}
-                icon={<Users className="h-4 w-4" />}
-              /> */}
-            </InfoCard>
-
-            {/* Personal Details */}
-            <InfoCard
-              title="Personal Details"
-              icon={<User className="h-5 w-5 text-family-primary" />}
-              onEditClick={() => onEdit(2)}
-            >
-              <DetailRow
-                label="Full Name"
-                value={member.name}
-                icon={<User className="h-4 w-4" />}
-              />
-              <DetailRow
-                label="Gender"
-                value={member.gender}
-                icon={<UserCheck className="h-4 w-4" />}
-              />
-              <DetailRow
-                label="Date of Birth"
-                value={formatDate(member.date_of_birth)}
-                icon={<Calendar className="h-4 w-4" />}
-              />
-              {member.is_deceased && (
-                <DetailRow
-                  label="Date of Death"
-                  value={
-                    member.date_of_death
-                      ? formatDate(member.date_of_death)
-                      : null
-                  }
-                  icon={<Calendar className="h-4 w-4" />}
-                />
-              )}
-              <DetailRow
-                label="Marital Status"
-                value={member.marital_status}
-                icon={<Heart className="h-4 w-4" />}
-              />
-              <DetailRow
-                label="Spouse Name"
-                value={member.spouse_name}
-                icon={<User className="h-4 w-4" />}
-              />
-              <DetailRow
-                label="Wedding Anniversary"
-                value={
-                  member.wedding_anniversary
-                    ? formatDate(member.wedding_anniversary)
-                    : null
-                }
-                icon={<Calendar className="h-4 w-4" />}
-              />
-              <DetailRow
-                label="Father's Name"
-                value={member.father_name}
-                icon={<User className="h-4 w-4" />}
-              />
-              <DetailRow
-                label="Mother's Name"
-                value={member.mother_name}
-                icon={<User className="h-4 w-4" />}
-              />
-              <DetailRow
-                label="Number of Children"
-                value={member.number_of_children}
-                icon={<Users className="h-4 w-4" />}
-              />
-
-              {/* Photos Section */}
-              {(member.personal_photo || member.family_photo) && (
-                <div className="pt-4 border-t mt-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Camera className="h-4 w-4 text-family-primary" />
-                    <span className="font-medium text-family-primary">
-                      Uploaded Photos
-                    </span>
-                  </div>
-                  <div className="flex gap-4 flex-wrap">
-                    {member.personal_photo && (
-                      <div className="text-center">
-                        <img
-                          src={member.personal_photo}
-                          alt={`${member.name} - Personal Photo`}
-                          className="w-20 h-20 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Personal
-                        </p>
-                      </div>
-                    )}
-                    {member.family_photo && (
-                      <div className="text-center">
-                        <img
-                          src={member.family_photo}
-                          alt={`${member.name} - Family Photo`}
-                          className="w-20 h-20 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Family
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </InfoCard>
-
-            {/* Contact & Employment for Living Members */}
-            {isAlive ? (
-              <>
-                {/* Contact Information */}
-                {member.contacts && member.contacts.length > 0 && (
-                  <InfoCard
-                    title="Contact Information"
-                    icon={<Phone className="h-5 w-5 text-family-primary" />}
-                    onEditClick={() => onEdit(3)}
-                  >
-                    {member.contacts.map((contact, contactIdx) => (
-                      <div key={contact.id} className="space-y-2">
-                        {contactIdx > 0 && <hr className="my-4" />}
-                        <DetailRow
-                          label="Phone Number"
-                          value={contact.phone_number}
-                          icon={<Phone className="h-4 w-4" />}
-                        />
-                        <DetailRow
-                          label="WhatsApp Number"
-                          value={contact.whatsapp_number}
-                          icon={<Phone className="h-4 w-4" />}
-                        />
-                        <DetailRow
-                          label="Email Address"
-                          value={contact.email}
-                          icon={<Mail className="h-4 w-4" />}
-                        />
-                        <DetailRow
-                          label="Address"
-                          value={contact.address}
-                          icon={<MapPin className="h-4 w-4" />}
-                        />
-                      </div>
-                    ))}
-                  </InfoCard>
-                )}
-
-                {/* Employment Information */}
-                {member.employments && member.employments.length > 0 && (
-                  <InfoCard
-                    title="Employment Information"
-                    icon={<Briefcase className="h-5 w-5 text-family-primary" />}
-                    onEditClick={() => onEdit(4)}
-                  >
-                    {member.employments.map((employment, empIdx) => (
-                      <div key={employment.id} className="space-y-2">
-                        {empIdx > 0 && <hr className="my-4" />}
-                        <DetailRow
-                          label="Job Status"
-                          value={employment.job_status}
-                          icon={<UserCheck className="h-4 w-4" />}
-                        />
-                        <DetailRow
-                          label="Company Name"
-                          value={employment.company_name}
-                          icon={<Building className="h-4 w-4" />}
-                        />
-                        <DetailRow
-                          label="Designation"
-                          value={employment.designation}
-                          icon={<Briefcase className="h-4 w-4" />}
-                        />
-                        <DetailRow
-                          label="Work Location"
-                          value={employment.work_location}
-                          icon={<MapPin className="h-4 w-4" />}
-                        />
-                      </div>
-                    ))}
-                  </InfoCard>
-                )}
-              </>
-            ) : (
-              <Card className="border-muted bg-gray-50">
-                <CardContent className="pt-6">
-                  <div className="text-center text-muted-foreground">
-                    <Heart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="font-medium">
-                      Contact and Employment information not applicable
-                    </p>
-                    <p className="text-sm">This member is no longer with us</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Timestamps (Optional - for admin view) */}
-            <div className="text-xs text-muted-foreground text-center pt-4 border-t">
-              <p>Created: {new Date(member.created_at).toLocaleString()}</p>
-              <p>
-                Last Updated: {new Date(member.updated_at).toLocaleString()}
-              </p>
+            <div>
+              <h3 className="text-xl font-semibold">{data.name}</h3>
+              <p className="text-muted-foreground text-sm">Member Details</p>
             </div>
           </div>
-        );
-      })}
+          {!isAlive && (
+            <Badge variant="secondary" className="bg-gray-100">
+              <Heart className="h-3 w-3 mr-1" />
+              Deceased
+            </Badge>
+          )}
+        </div>
+
+        {/* Family Details */}
+        <InfoCard
+          title="Family Information"
+          icon={<Users className="h-5 w-5 text-family-primary" />}
+          onEditClick={() => onEdit(1)}
+        >
+          <DetailRow
+            label="Branch"
+            value={data.head_branch}
+            icon={<Users className="h-4 w-4" />}
+          />
+        </InfoCard>
+
+        {/* Personal Details */}
+        <InfoCard
+          title="Personal Details"
+          icon={<User className="h-5 w-5 text-family-primary" />}
+          onEditClick={() => onEdit(2)}
+        >
+          <DetailRow
+            label="Full Name"
+            value={data.name}
+            icon={<User className="h-4 w-4" />}
+          />
+          <DetailRow
+            label="Gender"
+            value={data.gender}
+            icon={<UserCheck className="h-4 w-4" />}
+          />
+          <DetailRow
+            label="Date of Birth"
+            value={formatDate(data.date_of_birth)}
+            icon={<Calendar className="h-4 w-4" />}
+          />
+          {data.is_deceased && (
+            <DetailRow
+              label="Date of Death"
+              value={formatDate(data.date_of_death)}
+              icon={<Calendar className="h-4 w-4" />}
+            />
+          )}
+          <DetailRow
+            label="Marital Status"
+            value={data.marital_status}
+            icon={<Heart className="h-4 w-4" />}
+          />
+          <DetailRow
+            label="Spouse Name"
+            value={data.spouse_name}
+            icon={<User className="h-4 w-4" />}
+          />
+          <DetailRow
+            label="Wedding Anniversary"
+            value={formatDate(data.wedding_anniversary)}
+            icon={<Calendar className="h-4 w-4" />}
+          />
+          <DetailRow
+            label="Father's Name"
+            value={data.father_name}
+            icon={<User className="h-4 w-4" />}
+          />
+          <DetailRow
+            label="Mother's Name"
+            value={data.mother_name}
+            icon={<User className="h-4 w-4" />}
+          />
+          <DetailRow
+            label="Number of Children"
+            value={data.number_of_children}
+            icon={<Users className="h-4 w-4" />}
+          />
+
+          {/* Photos Section */}
+          {(data.personal_photo || data.family_photo) && (
+            <div className="pt-4 border-t mt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Camera className="h-4 w-4 text-family-primary" />
+                <span className="font-medium text-family-primary">
+                  Uploaded Photos
+                </span>
+              </div>
+              <div className="flex gap-4 flex-wrap">
+                {data.personal_photo && (
+                  <div className="text-center">
+                    <img
+                      src={data.personal_photo}
+                      alt={`${data.name} - Personal Photo`}
+                      className="w-20 h-20 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Personal
+                    </p>
+                  </div>
+                )}
+                {data.family_photo && (
+                  <div className="text-center">
+                    <img
+                      src={data.family_photo}
+                      alt={`${data.name} - Family Photo`}
+                      className="w-20 h-20 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Family</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </InfoCard>
+
+        {/* Contact & Employment for Living Members */}
+        {isAlive ? (
+          <>
+            {/* Contact Information */}
+            {data.contacts && data.contacts.length > 0 && (
+              <InfoCard
+                title="Contact Information"
+                icon={<Phone className="h-5 w-5 text-family-primary" />}
+                onEditClick={() => onEdit(3)}
+              >
+                {data.contacts.map((contact, contactIdx) => (
+                  <div key={contact.id} className="space-y-2">
+                    {contactIdx > 0 && <hr className="my-4" />}
+                    <DetailRow
+                      label="Phone Number"
+                      value={contact.phone_number}
+                      icon={<Phone className="h-4 w-4" />}
+                    />
+                    <DetailRow
+                      label="WhatsApp Number"
+                      value={contact.whatsapp_number}
+                      icon={<Phone className="h-4 w-4" />}
+                    />
+                    <DetailRow
+                      label="Email Address"
+                      value={contact.email}
+                      icon={<Mail className="h-4 w-4" />}
+                    />
+                    <DetailRow
+                      label="Address"
+                      value={contact.address}
+                      icon={<MapPin className="h-4 w-4" />}
+                    />
+                  </div>
+                ))}
+              </InfoCard>
+            )}
+
+            {/* Employment Information */}
+            {data.employments && data.employments.length > 0 && (
+              <InfoCard
+                title="Employment Information"
+                icon={<Briefcase className="h-5 w-5 text-family-primary" />}
+                onEditClick={() => onEdit(4)}
+              >
+                {data.employments.map((employment, empIdx) => (
+                  <div key={employment.id} className="space-y-2">
+                    {empIdx > 0 && <hr className="my-4" />}
+                    <DetailRow
+                      label="Job Status"
+                      value={employment.job_status}
+                      icon={<UserCheck className="h-4 w-4" />}
+                    />
+                    <DetailRow
+                      label="Company Name"
+                      value={employment.company_name}
+                      icon={<Building className="h-4 w-4" />}
+                    />
+                    <DetailRow
+                      label="Designation"
+                      value={employment.designation}
+                      icon={<Briefcase className="h-4 w-4" />}
+                    />
+                    <DetailRow
+                      label="Work Location"
+                      value={employment.work_location}
+                      icon={<MapPin className="h-4 w-4" />}
+                    />
+                  </div>
+                ))}
+              </InfoCard>
+            )}
+          </>
+        ) : (
+          <Card className="border-muted bg-gray-50">
+            <CardContent className="pt-6">
+              <div className="text-center text-muted-foreground">
+                <Heart className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="font-medium">
+                  Contact and Employment information not applicable
+                </p>
+                <p className="text-sm">This member is no longer with us</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Timestamps (Optional - for admin view) */}
+        <div className="text-xs text-muted-foreground text-center pt-4 border-t">
+          <p>Created: {new Date(data.created_at).toLocaleString()}</p>
+          <p>Last Updated: {new Date(data.updated_at).toLocaleString()}</p>
+        </div>
+      </div>
     </div>
   );
 };
