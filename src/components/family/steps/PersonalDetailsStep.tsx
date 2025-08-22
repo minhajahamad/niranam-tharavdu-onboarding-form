@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,9 +10,21 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, X, Users, Heart, Camera, ImagePlus } from 'lucide-react';
+import {
+  Upload,
+  X,
+  Users,
+  Heart,
+  Camera,
+  ImagePlus,
+  ChevronDown,
+  Check,
+} from 'lucide-react';
 import { PersonalDetails, StepProps } from '../types';
 import { EnhancedDatePicker } from '@/components/ui/date-picker-enhanced';
+
+import { API_URL } from '@/components/apiconfig/api_url';
+import axiosInstance from '@/components/apiconfig/axios';
 
 const MARITAL_STATUS = ['Single', 'Married'];
 const GENDER_OPTIONS = ['Male', 'Female'];
@@ -21,6 +33,202 @@ interface PersonalDetailsStepProps extends StepProps {
   data: PersonalDetails;
   onValidate?: React.MutableRefObject<any>;
 }
+
+interface MemberOption {
+  id: number;
+  name: string;
+  gender: string;
+  date_of_birth: string;
+  spouse_name?: string; // Add spouse_name field
+}
+
+// Autocomplete Component
+interface AutocompleteProps {
+  value: string;
+  onChange: (value: string, option?: MemberOption) => void;
+  placeholder: string;
+  gender: 'Male' | 'Female';
+  className?: string;
+  id?: string;
+}
+
+const Autocomplete: React.FC<AutocompleteProps> = ({
+  value,
+  onChange,
+  placeholder,
+  gender,
+  className = '',
+  id,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [options, setOptions] = useState<MemberOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Debounce function
+  const debounce = (func: Function, wait: number) => {
+    let timeout: NodeJS.Timeout;
+    return function executedFunction(...args: any[]) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  };
+
+  // Fetch members from API
+  const fetchMembers = useCallback(
+    async (searchValue: string) => {
+      if (searchValue.length < 1) {
+        setOptions([]);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const response = await axiosInstance.get(
+          API_URL.MEMBER.GET_FATHER_NAME,
+          {
+            params: {
+              gender: gender,
+              search: searchValue, // Add search parameter if your API supports it
+            },
+          }
+        );
+
+        if (response.data && Array.isArray(response.data)) {
+          // Filter results based on the search term (client-side filtering as backup)
+          const filteredOptions = response.data.filter((member: MemberOption) =>
+            member.name.toLowerCase().includes(searchValue.toLowerCase())
+          );
+          setOptions(filteredOptions);
+        }
+      } catch (error) {
+        console.error('Error fetching members:', error);
+        setOptions([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [gender]
+  );
+
+  // Debounced fetch function
+  const debouncedFetch = useCallback(debounce(fetchMembers, 300), [
+    fetchMembers,
+  ]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setSearchTerm(newValue);
+    onChange(newValue); // Don't pass option when typing manually
+
+    if (newValue.length >= 1) {
+      setIsOpen(true);
+      debouncedFetch(newValue);
+    } else {
+      setIsOpen(false);
+      setOptions([]);
+    }
+  };
+
+  // Handle option selection
+  const handleOptionSelect = (option: MemberOption) => {
+    setSearchTerm(option.name);
+    onChange(option.name, option); // Pass the full option object
+    setIsOpen(false);
+    setOptions([]);
+  };
+
+  // Handle input focus
+  const handleFocus = () => {
+    if (searchTerm.length >= 1) {
+      setIsOpen(true);
+      debouncedFetch(searchTerm);
+    }
+  };
+
+  // Handle click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Update search term when value prop changes
+  useEffect(() => {
+    setSearchTerm(value);
+  }, [value]);
+
+  return (
+    <div className="relative">
+      <Input
+        ref={inputRef}
+        id={id}
+        value={searchTerm}
+        onChange={handleInputChange}
+        onFocus={handleFocus}
+        placeholder={placeholder}
+        className={className}
+        autoComplete="off"
+      />
+
+      {isOpen && (
+        <div
+          ref={dropdownRef}
+          className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"
+        >
+          {loading && (
+            <div className="px-3 py-2 text-sm text-gray-500">Loading...</div>
+          )}
+
+          {!loading && options.length === 0 && searchTerm.length >= 1 && (
+            <div className="px-3 py-2 text-sm text-gray-500">
+              No results found
+            </div>
+          )}
+
+          {!loading && options.length > 0 && (
+            <div className="py-1">
+              {options.map(option => (
+                <button
+                  key={option.id}
+                  onClick={() => handleOptionSelect(option)}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none flex items-center justify-between"
+                >
+                  <div>
+                    <div className="font-medium">{option.name}</div>
+                    <div className="text-xs text-gray-500">
+                      Born:{' '}
+                      {new Date(option.date_of_birth).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400">{option.gender}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
   data,
@@ -80,7 +288,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
     // Validate that we have a head UUID
     if (!headUuid) {
       console.error('No family head UUID found in localStorage');
-      throw new Error('Family head UUID is required but not found. Please complete step 1 first.');
+      throw new Error(
+        'Family head UUID is required but not found. Please complete step 1 first.'
+      );
     }
 
     // Basic information
@@ -143,6 +353,16 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
       onValidate.current = performValidation;
     }
   }, [data, onValidate]);
+
+  // Handle father name selection and auto-populate mother name
+  const handleFatherNameChange = (value: string, option?: MemberOption) => {
+    handleInputChange('fatherName', value);
+
+    // If an option was selected (not just typed), populate mother name with spouse
+    if (option && option.spouse_name) {
+      handleInputChange('motherName', option.spouse_name);
+    }
+  };
 
   const handleInputChange = (field: keyof PersonalDetails, value: any) => {
     onChange({ [field]: value });
@@ -443,11 +663,12 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
 
           <div className="space-y-2">
             <Label htmlFor="fatherName">Father Name</Label>
-            <Input
+            <Autocomplete
               id="fatherName"
-              placeholder="Enter your father's name"
               value={data.fatherName || ''}
-              onChange={e => handleInputChange('fatherName', e.target.value)}
+              onChange={handleFatherNameChange}
+              placeholder="Enter your father's name"
+              gender="Male"
             />
           </div>
 

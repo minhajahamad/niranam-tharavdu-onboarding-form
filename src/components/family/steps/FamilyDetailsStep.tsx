@@ -46,7 +46,7 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
 
   // 🔧 FIX: Also sync selectedHeadUuid when coming back to this step
   useEffect(() => {
-    // If we have head of family data but no selected UUID, 
+    // If we have head of family data but no selected UUID,
     // we need to determine if this is an existing head or new one
     if (data.headOfFamily && data.branch) {
       // Try to find if this head name exists in the current branch
@@ -62,7 +62,8 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
             }
           );
           const existingHead = (res.data || []).find(
-            (h: any) => h.head_name.toLowerCase() === data.headOfFamily.toLowerCase()
+            (h: any) =>
+              h.head_name.toLowerCase() === data.headOfFamily.toLowerCase()
           );
           if (existingHead) {
             setSelectedHeadUuid(existingHead.uuid);
@@ -72,7 +73,7 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
           console.error('Error checking existing head:', error);
         }
       };
-      
+
       searchExistingHead();
     }
   }, [data.headOfFamily, data.branch]);
@@ -304,9 +305,6 @@ export const FamilyDetailsStep: React.FC<FamilyDetailsStepProps> = ({
                                 <Check className="mr-2 h-4 w-4 opacity-0" />
                                 <div className="flex flex-col">
                                   <span>Create new: "{headOfFamilyInput}"</span>
-                                  <span className="text-xs text-orange-600">
-                                    ⚠️ Make sure this name doesn't exist
-                                  </span>
                                 </div>
                                 <span className="ml-auto text-xs">New</span>
                               </CommandItem>

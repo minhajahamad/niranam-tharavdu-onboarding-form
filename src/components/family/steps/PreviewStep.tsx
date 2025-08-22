@@ -11,31 +11,102 @@ import {
   Users,
   Heart,
   Camera,
+  Calendar,
+  MapPin,
+  Mail,
+  Building,
+  UserCheck,
 } from 'lucide-react';
 import axiosInstance from '@/components/apiconfig/axios';
 import { API_URL } from '@/components/apiconfig/api_url';
+
+interface Contact {
+  id: number;
+  member_name: string;
+  phone_number: string;
+  whatsapp_number: string;
+  email: string | null;
+  address: string;
+}
+
+interface Employment {
+  id: number;
+  member_name: string;
+  job_status: string;
+  company_name: string;
+  designation: string;
+  work_location: string;
+}
+
+interface Member {
+  id: number;
+  head_branch: string;
+  name: string;
+  is_deceased: boolean;
+  gender: string;
+  date_of_birth: string;
+  date_of_death?: string;
+  marital_status: string;
+  spouse_name: string;
+  wedding_anniversary: string;
+  father_name: string;
+  mother_name: string;
+  number_of_children: number;
+  personal_photo: string | null;
+  family_photo: string | null;
+  created_at: string;
+  updated_at: string;
+  head: string;
+  contacts: Contact[];
+  employments: Employment[];
+}
+
+interface ApiResponse {
+  message: string;
+  data: Member[];
+}
 
 interface PreviewStepProps {
   onEdit: (step: number) => void;
 }
 
 export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchDetails = async () => {
       try {
         const headUuid = localStorage.getItem('familyHeadUuid');
-        if (!headUuid) return;
+        if (!headUuid) {
+          setError('Family Head UUID not found in localStorage');
+          return;
+        }
 
-        const res = await axiosInstance.get(
-          `${API_URL.PREVIEW_DETAILS.GET_FULL_DETAILS}${headUuid}/`
+        const memberId = localStorage.getItem('member_id');
+        if (!memberId) {
+          setError('Member Id not found');
+          return;
+        }
+
+        const res = await axiosInstance.get<ApiResponse>(
+          API_URL.PREVIEW_DETAILS.GET_FULL_DETAILS,
+          {
+            params: { head_uuid: headUuid, member_id: memberId },
+          }
         );
-        setData(res.data.data); // data is array of members
-        console.log(res.data.data);
+
+        if (res.data && res.data.data) {
+          setData(res.data.data);
+          console.log('Fetched family details:', res.data.data);
+        } else {
+          setError('No data received from API');
+        }
       } catch (err) {
-        console.error('Error fetching details', err);
+        console.error('Error fetching details:', err);
+        setError('Failed to fetch family details');
       } finally {
         setLoading(false);
       }
@@ -44,13 +115,35 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
     fetchDetails();
   }, []);
 
+  console.log(data);
+
   if (loading) {
-    return <p className="text-center">Loading preview...</p>;
+    return (
+      <div className="flex justify-center items-center p-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-family-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading preview...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center p-8">
+        <p className="text-red-500 mb-4">{error}</p>
+        <Button onClick={() => window.location.reload()} variant="outline">
+          Try Again
+        </Button>
+      </div>
+    );
   }
 
   if (!data || data.length === 0) {
     return (
-      <p className="text-center text-muted-foreground">No details found.</p>
+      <div className="text-center p-8">
+        <p className="text-muted-foreground">No family details found.</p>
+      </div>
     );
   }
 
@@ -59,13 +152,15 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
     icon,
     children,
     onEditClick,
+    className = '',
   }: {
     title: string;
     icon: React.ReactNode;
     children: React.ReactNode;
     onEditClick: () => void;
+    className?: string;
   }) => (
-    <Card>
+    <Card className={className}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-lg flex items-center gap-2">
           {icon} {title}
@@ -86,38 +181,94 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
   const DetailRow = ({
     label,
     value,
+    icon,
   }: {
     label: string;
     value?: string | number | null;
-  }) =>
-    value ? (
-      <div className="flex justify-between py-1">
-        <span className="text-muted-foreground">{label}:</span>
-        <span className="font-medium">{value}</span>
+    icon?: React.ReactNode;
+  }) => {
+    // Don't render if value is null, undefined, or empty string
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+
+    return (
+      <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+        <span className="text-muted-foreground flex items-center gap-2">
+          {icon && icon}
+          {label}:
+        </span>
+        <span className="font-medium text-right max-w-[60%]">{value}</span>
       </div>
-    ) : null;
+    );
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return null;
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div className="text-center">
-        <h2 className="text-2xl font-bold mb-2">Review Registration Details</h2>
+        <h2 className="text-3xl font-bold mb-2">Review Registration Details</h2>
         <p className="text-muted-foreground">
-          Please review all information before submitting
+          Please review all information before submitting your registration
         </p>
+        <Badge variant="secondary" className="mt-2">
+          {data.length} Member{data.length > 1 ? 's' : ''} Found
+        </Badge>
       </div>
 
       {data.map((member, idx) => {
         const isAlive = !member.is_deceased;
 
         return (
-          <div key={idx} className="space-y-6 border p-4 rounded-xl shadow-sm">
+          <div
+            key={member.id}
+            className="space-y-4 border-2 border-gray-100 p-6 rounded-xl shadow-lg bg-white"
+          >
+            {/* Member Header */}
+            <div className="flex items-center justify-between border-b pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-family-primary/10 rounded-full flex items-center justify-center">
+                  <User className="h-6 w-6 text-family-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold">{member.name}</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Member #{idx + 1}
+                  </p>
+                </div>
+              </div>
+              {!isAlive && (
+                <Badge variant="secondary" className="bg-gray-100">
+                  <Heart className="h-3 w-3 mr-1" />
+                  Deceased
+                </Badge>
+              )}
+            </div>
+
             {/* Family Details */}
             <InfoCard
-              title="Family Details"
+              title="Family Information"
               icon={<Users className="h-5 w-5 text-family-primary" />}
               onEditClick={() => onEdit(1)}
             >
-              <DetailRow label="Head / Branch" value={member.head_branch} />
+              <DetailRow
+                label="Branch"
+                value={member.head_branch}
+                icon={<Users className="h-4 w-4" />}
+              />
+              {/* <DetailRow
+                label="Head"
+                value={member.head_branch}
+                icon={<Users className="h-4 w-4" />}
+              /> */}
             </InfoCard>
 
             {/* Personal Details */}
@@ -126,117 +277,200 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
               icon={<User className="h-5 w-5 text-family-primary" />}
               onEditClick={() => onEdit(2)}
             >
-              <DetailRow label="Member Name" value={member.name} />
-              <DetailRow label="Gender" value={member.gender} />
-              <DetailRow label="Date of Birth" value={member.date_of_birth} />
-              {member.is_deceased && member.date_of_death && (
-                <DetailRow label="Date of Death" value={member.date_of_death} />
+              <DetailRow
+                label="Full Name"
+                value={member.name}
+                icon={<User className="h-4 w-4" />}
+              />
+              <DetailRow
+                label="Gender"
+                value={member.gender}
+                icon={<UserCheck className="h-4 w-4" />}
+              />
+              <DetailRow
+                label="Date of Birth"
+                value={formatDate(member.date_of_birth)}
+                icon={<Calendar className="h-4 w-4" />}
+              />
+              {member.is_deceased && (
+                <DetailRow
+                  label="Date of Death"
+                  value={
+                    member.date_of_death
+                      ? formatDate(member.date_of_death)
+                      : null
+                  }
+                  icon={<Calendar className="h-4 w-4" />}
+                />
               )}
-              <DetailRow label="Marital Status" value={member.marital_status} />
-              <DetailRow label="Spouse Name" value={member.spouse_name} />
-              <DetailRow label="Father Name" value={member.father_name} />
-              <DetailRow label="Mother Name" value={member.mother_name} />
+              <DetailRow
+                label="Marital Status"
+                value={member.marital_status}
+                icon={<Heart className="h-4 w-4" />}
+              />
+              <DetailRow
+                label="Spouse Name"
+                value={member.spouse_name}
+                icon={<User className="h-4 w-4" />}
+              />
+              <DetailRow
+                label="Wedding Anniversary"
+                value={
+                  member.wedding_anniversary
+                    ? formatDate(member.wedding_anniversary)
+                    : null
+                }
+                icon={<Calendar className="h-4 w-4" />}
+              />
+              <DetailRow
+                label="Father's Name"
+                value={member.father_name}
+                icon={<User className="h-4 w-4" />}
+              />
+              <DetailRow
+                label="Mother's Name"
+                value={member.mother_name}
+                icon={<User className="h-4 w-4" />}
+              />
               <DetailRow
                 label="Number of Children"
                 value={member.number_of_children}
+                icon={<Users className="h-4 w-4" />}
               />
 
+              {/* Photos Section */}
               {(member.personal_photo || member.family_photo) && (
-                <div className="pt-2 border-t">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Camera className="h-4 w-4" />
-                    <span className="font-medium">Photos</span>
+                <div className="pt-4 border-t mt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Camera className="h-4 w-4 text-family-primary" />
+                    <span className="font-medium text-family-primary">
+                      Uploaded Photos
+                    </span>
                   </div>
-                  <div className="flex gap-4">
+                  <div className="flex gap-4 flex-wrap">
                     {member.personal_photo && (
-                      <img
-                        src={member.personal_photo}
-                        alt="Personal"
-                        className="w-16 h-16 object-cover rounded"
-                      />
+                      <div className="text-center">
+                        <img
+                          src={member.personal_photo}
+                          alt={`${member.name} - Personal Photo`}
+                          className="w-20 h-20 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Personal
+                        </p>
+                      </div>
                     )}
                     {member.family_photo && (
-                      <img
-                        src={member.family_photo}
-                        alt="Family"
-                        className="w-16 h-16 object-cover rounded"
-                      />
+                      <div className="text-center">
+                        <img
+                          src={member.family_photo}
+                          alt={`${member.name} - Family Photo`}
+                          className="w-20 h-20 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Family
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
               )}
             </InfoCard>
 
-            {/* If Alive → show contact & employment */}
+            {/* Contact & Employment for Living Members */}
             {isAlive ? (
               <>
-                {/* Contact */}
-                <InfoCard
-                  title="Contact Information"
-                  icon={<Phone className="h-5 w-5 text-family-primary" />}
-                  onEditClick={() => onEdit(3)}
-                >
-                  {member.contacts.length > 0 && (
-                    <>
-                      <DetailRow
-                        label="Contact Number"
-                        value={member.contacts[0].phone_number}
-                      />
-                      <DetailRow
-                        label="WhatsApp Number"
-                        value={member.contacts[0].whatsapp_number}
-                      />
-                      <DetailRow
-                        label="Email"
-                        value={member.contacts[0].email}
-                      />
-                      <DetailRow
-                        label="Address"
-                        value={member.contacts[0].address}
-                      />
-                    </>
-                  )}
-                </InfoCard>
+                {/* Contact Information */}
+                {member.contacts && member.contacts.length > 0 && (
+                  <InfoCard
+                    title="Contact Information"
+                    icon={<Phone className="h-5 w-5 text-family-primary" />}
+                    onEditClick={() => onEdit(3)}
+                  >
+                    {member.contacts.map((contact, contactIdx) => (
+                      <div key={contact.id} className="space-y-2">
+                        {contactIdx > 0 && <hr className="my-4" />}
+                        <DetailRow
+                          label="Phone Number"
+                          value={contact.phone_number}
+                          icon={<Phone className="h-4 w-4" />}
+                        />
+                        <DetailRow
+                          label="WhatsApp Number"
+                          value={contact.whatsapp_number}
+                          icon={<Phone className="h-4 w-4" />}
+                        />
+                        <DetailRow
+                          label="Email Address"
+                          value={contact.email}
+                          icon={<Mail className="h-4 w-4" />}
+                        />
+                        <DetailRow
+                          label="Address"
+                          value={contact.address}
+                          icon={<MapPin className="h-4 w-4" />}
+                        />
+                      </div>
+                    ))}
+                  </InfoCard>
+                )}
 
-                {/* Employment */}
-                <InfoCard
-                  title="Employment Information"
-                  icon={<Briefcase className="h-5 w-5 text-family-primary" />}
-                  onEditClick={() => onEdit(4)}
-                >
-                  {member.employments.length > 0 && (
-                    <>
-                      <DetailRow
-                        label="Job Status"
-                        value={member.employments[0].job_status}
-                      />
-                      <DetailRow
-                        label="Company Name"
-                        value={member.employments[0].company_name}
-                      />
-                      <DetailRow
-                        label="Designation"
-                        value={member.employments[0].designation}
-                      />
-                      <DetailRow
-                        label="Work Location"
-                        value={member.employments[0].work_location}
-                      />
-                    </>
-                  )}
-                </InfoCard>
+                {/* Employment Information */}
+                {member.employments && member.employments.length > 0 && (
+                  <InfoCard
+                    title="Employment Information"
+                    icon={<Briefcase className="h-5 w-5 text-family-primary" />}
+                    onEditClick={() => onEdit(4)}
+                  >
+                    {member.employments.map((employment, empIdx) => (
+                      <div key={employment.id} className="space-y-2">
+                        {empIdx > 0 && <hr className="my-4" />}
+                        <DetailRow
+                          label="Job Status"
+                          value={employment.job_status}
+                          icon={<UserCheck className="h-4 w-4" />}
+                        />
+                        <DetailRow
+                          label="Company Name"
+                          value={employment.company_name}
+                          icon={<Building className="h-4 w-4" />}
+                        />
+                        <DetailRow
+                          label="Designation"
+                          value={employment.designation}
+                          icon={<Briefcase className="h-4 w-4" />}
+                        />
+                        <DetailRow
+                          label="Work Location"
+                          value={employment.work_location}
+                          icon={<MapPin className="h-4 w-4" />}
+                        />
+                      </div>
+                    ))}
+                  </InfoCard>
+                )}
               </>
             ) : (
-              <Card className="border-muted">
+              <Card className="border-muted bg-gray-50">
                 <CardContent className="pt-6">
                   <div className="text-center text-muted-foreground">
                     <Heart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>Contact and Employment information not applicable</p>
+                    <p className="font-medium">
+                      Contact and Employment information not applicable
+                    </p>
                     <p className="text-sm">This member is no longer with us</p>
                   </div>
                 </CardContent>
               </Card>
             )}
+
+            {/* Timestamps (Optional - for admin view) */}
+            <div className="text-xs text-muted-foreground text-center pt-4 border-t">
+              <p>Created: {new Date(member.created_at).toLocaleString()}</p>
+              <p>
+                Last Updated: {new Date(member.updated_at).toLocaleString()}
+              </p>
+            </div>
           </div>
         );
       })}
