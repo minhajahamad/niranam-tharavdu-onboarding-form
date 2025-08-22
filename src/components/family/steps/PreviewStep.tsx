@@ -192,11 +192,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
     // For number of children, show 0 as it's meaningful information
     if (label === 'Number of Children' && value === 0) {
       // Show 0 for number of children as it's valid information
-    } else if (
-      typeof value === 'number' &&
-      value === 0 &&
-      label !== 'Number of Children'
-    ) {
+    } else if (typeof value === 'number' && value === 0 && label !== 'Number of Children') {
       return null;
     }
 
@@ -243,7 +239,9 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
             </div>
             <div>
               <h3 className="text-xl font-semibold">{data.name}</h3>
-              <p className="text-muted-foreground text-sm">Member Details</p>
+              <p className="text-muted-foreground text-sm">
+                Member Details
+              </p>
             </div>
           </div>
           {!isAlive && (
@@ -355,7 +353,9 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
                       alt={`${data.name} - Family Photo`}
                       className="w-20 h-20 object-cover rounded-lg border-2 border-gray-200 shadow-sm"
                     />
-                    <p className="text-xs text-muted-foreground mt-1">Family</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Family
+                    </p>
                   </div>
                 )}
               </div>
@@ -436,19 +436,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({ onEdit }) => {
               </InfoCard>
             )}
           </>
-        ) : (
-          <Card className="border-muted bg-gray-50">
-            <CardContent className="pt-6">
-              <div className="text-center text-muted-foreground">
-                <Heart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="font-medium">
-                  Contact and Employment information not applicable
-                </p>
-                <p className="text-sm">This member is no longer with us</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        ) : null}
 
         {/* Timestamps (Optional - for admin view) */}
         <div className="text-xs text-muted-foreground text-center pt-4 border-t">

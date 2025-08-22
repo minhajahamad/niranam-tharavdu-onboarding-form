@@ -135,7 +135,23 @@ export const FamilyOnboardingForm = () => {
   const personalDetailsValidationRef = useRef<any>();
 
   const isAlive = formData.personalDetails.isDeceased !== 'Yes';
+  
+  // Fixed maxStep calculation - for deceased members, preview step is step 3
   const maxStep = isAlive ? 5 : 3;
+  
+  // Get the actual step numbers that should be shown
+  const getVisibleSteps = () => {
+    if (isAlive) {
+      return STEPS; // All 5 steps
+    } else {
+      // For deceased: Family Details (1), Personal Details (2), Preview (3)
+      return [
+        STEPS[0], // Step 1: Family Details
+        STEPS[1], // Step 2: Personal Details  
+        { ...STEPS[4], id: 3 } // Step 3: Preview (renumbered)
+      ];
+    }
+  };
 
   const updateFormData = (step: keyof FormData, data: any) => {
     setFormData(prev => ({
@@ -851,9 +867,9 @@ export const FamilyOnboardingForm = () => {
         `Step ${currentStep} already completed with no changes, skipping API call`
       );
 
-      // Special handling for deceased members
+      // Fixed navigation logic for deceased members
       if (currentStep === 2 && !isAlive) {
-        setCurrentStep(5); // Skip to preview if deceased
+        setCurrentStep(3); // Go to preview step (which is step 3 for deceased)
       } else if (currentStep < maxStep) {
         setCurrentStep(currentStep + 1);
       }
@@ -950,7 +966,7 @@ export const FamilyOnboardingForm = () => {
           if (isAlive) {
             setCurrentStep(currentStep + 1); // Go to contact info
           } else {
-            setCurrentStep(5); // Skip to preview if deceased
+            setCurrentStep(3); // Go to preview step (which is step 3 for deceased)
           }
         } else {
           // alert(
@@ -966,55 +982,57 @@ export const FamilyOnboardingForm = () => {
         setIsSubmitting(false);
       }
     } else if (currentStep === 3) {
-      // Handle contact information step
-      console.log('=== DEBUG: nextStep called for Contact Information ===');
+      // Handle contact information step (only for alive members)
+      if (isAlive) {
+        console.log('=== DEBUG: nextStep called for Contact Information ===');
 
-      const validation = validateContactInfo();
+        const validation = validateContactInfo();
 
-      if (!validation.isValid) {
-        console.log('Contact info validation failed:', validation.errors);
-        // alert(
-        //   `Please fix the following errors:\n${validation.errors.join('\n')}`
-        // );
-        return;
-      }
-
-      setIsSubmitting(true);
-
-      try {
-        console.log(
-          `${isStepCompleted ? 'Updating' : 'Creating'} contact information...`
-        );
-        const result = await submitContactData(isStepCompleted);
-
-        if (result.success) {
-          markStepCompleted(3);
-          storeOriginalStepData(3, formData.contactInfo);
+        if (!validation.isValid) {
+          console.log('Contact info validation failed:', validation.errors);
           // alert(
-          //   `Contact information ${
-          //     isStepCompleted ? 'updated' : 'saved'
-          //   } successfully!`
+          //   `Please fix the following errors:\n${validation.errors.join('\n')}`
           // );
-          setCurrentStep(currentStep + 1); // Go to employment step
-        } else {
-          // alert(
-          //   `Failed to ${
-          //     isStepCompleted ? 'update' : 'save'
-          //   } contact information: ${result.error}`
-          // );
+          return;
         }
-      } catch (error) {
-        console.error('Unexpected error during contact submission:', error);
-        // alert(
-        //   `An unexpected error occurred while ${
-        //     isStepCompleted ? 'updating' : 'saving'
-        //   } contact info. Please try again.`
-        // );
-      } finally {
-        setIsSubmitting(false);
+
+        setIsSubmitting(true);
+
+        try {
+          console.log(
+            `${isStepCompleted ? 'Updating' : 'Creating'} contact information...`
+          );
+          const result = await submitContactData(isStepCompleted);
+
+          if (result.success) {
+            markStepCompleted(3);
+            storeOriginalStepData(3, formData.contactInfo);
+            // alert(
+            //   `Contact information ${
+            //     isStepCompleted ? 'updated' : 'saved'
+            //   } successfully!`
+            // );
+            setCurrentStep(currentStep + 1); // Go to employment step
+          } else {
+            // alert(
+            //   `Failed to ${
+            //     isStepCompleted ? 'update' : 'save'
+            //   } contact information: ${result.error}`
+            // );
+          }
+        } catch (error) {
+          console.error('Unexpected error during contact submission:', error);
+          // alert(
+          //   `An unexpected error occurred while ${
+          //     isStepCompleted ? 'updating' : 'saving'
+          //   } contact info. Please try again.`
+          // );
+        } finally {
+          setIsSubmitting(false);
+        }
       }
     } else if (currentStep === 4) {
-      // Handle employment step
+      // Handle employment step (only for alive members)
       console.log('=== DEBUG: nextStep called for Employment ===');
 
       const validation = validateEmployment();
@@ -1063,19 +1081,12 @@ export const FamilyOnboardingForm = () => {
       } finally {
         setIsSubmitting(false);
       }
-    } else {
-      // Handle other steps (employment)
-      if (currentStep === 2 && !isAlive) {
-        setCurrentStep(5); // Skip to preview if deceased
-      } else if (currentStep < maxStep) {
-        setCurrentStep(currentStep + 1);
-      }
     }
   };
 
   const prevStep = () => {
-    if (currentStep === 5 && !isAlive) {
-      setCurrentStep(2); // Go back to step 2 if deceased
+    if (currentStep === 3 && !isAlive) {
+      setCurrentStep(2); // Go back to step 2 if deceased (from preview to personal details)
     } else if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
@@ -1147,12 +1158,21 @@ export const FamilyOnboardingForm = () => {
           />
         );
       case 3:
-        return (
-          <ContactInfoStep
-            data={formData.contactInfo}
-            onChange={data => updateFormData('contactInfo', data)}
-          />
-        );
+        // For alive members, this is contact info. For deceased, this is preview
+        if (isAlive) {
+          return (
+            <ContactInfoStep
+              data={formData.contactInfo}
+              onChange={data => updateFormData('contactInfo', data)}
+            />
+          );
+        } else {
+          return (
+            <PreviewStep
+              onEdit={goToStep}
+            />
+          );
+        }
       case 4:
         return (
           <EmploymentStep
@@ -1163,9 +1183,7 @@ export const FamilyOnboardingForm = () => {
       case 5:
         return (
           <PreviewStep
-            // formData={formData}
             onEdit={goToStep}
-            // isAlive={isAlive}
           />
         );
       default:
@@ -1189,7 +1207,15 @@ export const FamilyOnboardingForm = () => {
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between mb-4">
               <CardTitle className="text-lg">
-                Step {currentStep} of {maxStep}: {STEPS[currentStep - 1]?.title}
+                Step {currentStep} of {maxStep}: {
+                  // Get the correct step title based on current step and alive status
+                  (() => {
+                    if (!isAlive && currentStep === 3) {
+                      return STEPS[4].title; // Show "Preview" for step 3 when deceased
+                    }
+                    return STEPS[currentStep - 1]?.title;
+                  })()
+                }
               </CardTitle>
               <span className="text-sm text-muted-foreground">
                 {Math.round(getProgressPercentage())}% Complete
@@ -1200,7 +1226,7 @@ export const FamilyOnboardingForm = () => {
         </Card>
 
         <StepIndicator
-          steps={STEPS.slice(0, maxStep)}
+          steps={getVisibleSteps()}
           currentStep={currentStep}
           onStepClick={goToStep}
           isAlive={isAlive}
