@@ -1,8 +1,8 @@
 export const API_URL = {
   BRANCHES: {
-    POST_BRANCHES: 'api/branches',
-    EDIT_BRANCHES: 'api/branches',
-    GET_BRANCHES: 'api/branches',
+    POST_BRANCHES: 'api/branches/',
+    EDIT_BRANCHES: 'api/branches/',
+    GET_BRANCHES: 'api/branches/',
   },
   HEAD_MEMBER: {
     POST_HEAD_MEMBER: 'api/family/create/',

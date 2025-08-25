@@ -38,6 +38,7 @@ interface MemberOption {
   id: number;
   name: string;
   gender: string;
+  head_branch: string;
   date_of_birth: string;
   spouse_name?: string; // Add spouse_name field
 }
@@ -215,8 +216,8 @@ const Autocomplete: React.FC<AutocompleteProps> = ({
                   <div>
                     <div className="font-medium">{option.name}</div>
                     <div className="text-xs text-gray-500">
-                      Born:{' '}
-                      {new Date(option.date_of_birth).toLocaleDateString()}
+                      Branch:
+                      {option.head_branch}
                     </div>
                   </div>
                   <div className="text-xs text-gray-400">{option.gender}</div>
@@ -429,7 +430,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
       (_, i) => data.children[i] || { name: '', gender: '' }
     );
     onChange({ numberOfChildren: count, children });
-    
+
     // Clear children-related validation errors
     for (let i = 0; i < 20; i++) {
       clearFieldError(`child_${i}_name`);
@@ -445,7 +446,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
     const updatedChildren = [...data.children];
     updatedChildren[index] = { ...updatedChildren[index], [field]: value };
     onChange({ children: updatedChildren });
-    
+
     // Clear specific child field error
     clearFieldError(`child_${index}_${field}`);
   };
@@ -583,22 +584,6 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Is this member deceased?</Label>
-            <Select
-              value={data.isDeceased || 'No'}
-              onValueChange={value => handleInputChange('isDeceased', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Please select" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="No">No</SelectItem>
-                <SelectItem value="Yes">Yes</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
             <Label>Gender *</Label>
             <Select
               value={data.gender || ''}
@@ -635,6 +620,21 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                 {validationErrors.dateOfBirth}
               </p>
             )}
+          </div>
+          <div className="space-y-2">
+            <Label>Is this member deceased?</Label>
+            <Select
+              value={data.isDeceased || 'No'}
+              onValueChange={value => handleInputChange('isDeceased', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Please select" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="No">No</SelectItem>
+                <SelectItem value="Yes">Yes</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {data.isDeceased === 'Yes' && (
@@ -703,7 +703,9 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
                   onChange={e =>
                     handleInputChange('spouseName', e.target.value)
                   }
-                  className={validationErrors.spouseName ? 'border-red-500' : ''}
+                  className={
+                    validationErrors.spouseName ? 'border-red-500' : ''
+                  }
                 />
                 {validationErrors.spouseName && (
                   <p className="text-sm text-red-500">
@@ -734,7 +736,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="fatherName">Father Name</Label>
+            <Label htmlFor="fatherName">Member's Father Name</Label>
             <Autocomplete
               id="fatherName"
               value={data.fatherName || ''}
@@ -745,7 +747,7 @@ export const PersonalDetailsStep: React.FC<PersonalDetailsStepProps> = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="motherName">Mother Name</Label>
+            <Label htmlFor="motherName">Member's Mother Name</Label>
             <Input
               id="motherName"
               placeholder="Enter mother name"
